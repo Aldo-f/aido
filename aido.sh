@@ -167,6 +167,13 @@ install_aido() {
         echo "Run: source ~/.bashrc"
     fi
     
+    # Copy proxy to DATA_DIR for portability
+    if [ -d "$SCRIPT_DIR/proxy" ]; then
+        mkdir -p "$DATA_DIR/proxy"
+        cp -r "$SCRIPT_DIR/proxy/"* "$DATA_DIR/proxy/" 2>/dev/null || true
+        success "Installed proxy to $DATA_DIR/proxy"
+    fi
+    
     echo ""
     echo "AIDO installation complete!"
 }
@@ -568,15 +575,34 @@ handle_command() {
 proxy_start() {
     local port="${1:-11999}"
     echo "Starting AIDO Proxy on port $port..."
-    python3 "$SCRIPT_DIR/proxy/server.py" start --port "$port"
+    
+    # Check DATA_DIR first, then SCRIPT_DIR
+    local proxy_dir="$DATA_DIR/proxy"
+    if [ ! -d "$proxy_dir" ]; then
+        proxy_dir="$SCRIPT_DIR/proxy"
+    fi
+    
+    python3 "$proxy_dir/server.py" start --port "$port"
 }
 
 proxy_stop() {
-    python3 "$SCRIPT_DIR/proxy/server.py" stop
+    # Check DATA_DIR first, then SCRIPT_DIR
+    local proxy_dir="$DATA_DIR/proxy"
+    if [ ! -d "$proxy_dir" ]; then
+        proxy_dir="$SCRIPT_DIR/proxy"
+    fi
+    
+    python3 "$proxy_dir/server.py" stop
 }
 
 proxy_status() {
-    python3 "$SCRIPT_DIR/proxy/server.py" status
+    # Check DATA_DIR first, then SCRIPT_DIR
+    local proxy_dir="$DATA_DIR/proxy"
+    if [ ! -d "$proxy_dir" ]; then
+        proxy_dir="$SCRIPT_DIR/proxy"
+    fi
+    
+    python3 "$proxy_dir/server.py" status
 }
 
 # ==================== CLI PARSING ====================

@@ -22,6 +22,12 @@ DATA_DIR = Path(os.path.expanduser("~/.aido-data"))
 CONFIG_FILE = DATA_DIR / "config.json"
 PID_FILE = DATA_DIR / "aido-proxy.pid"
 
+# Check both DATA_DIR and SCRIPT_DIR for config
+SCRIPT_DIR = Path(__file__).parent.resolve()
+if not (DATA_DIR / "config.json").exists():
+    # Use SCRIPT_DIR as fallback for config
+    DATA_DIR = SCRIPT_DIR.parent
+
 # Provider endpoints
 OLLAMA_ENDPOINT = os.environ.get("OLLAMA_ENDPOINT", "http://localhost:11434")
 DMR_ENDPOINT = os.environ.get("DMR_ENDPOINT", "http://localhost:12434")
