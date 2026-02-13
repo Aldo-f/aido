@@ -71,7 +71,22 @@ def load_config():
             },
         },
         "proxy": {"enabled": True, "port": DEFAULT_PORT, "default_model": "auto"},
+        "model_preference": "cloud_first",  # "cloud_first", "local_first", or "auto"
+        "api_mode": "chat",  # "chat" or "generate"
     }
+
+
+def get_model_preference():
+    """Get model preference from config"""
+    config = load_config()
+    return config.get("model_preference", "cloud_first")
+
+
+def get_api_mode():
+    """Get API mode from config: chat or generate
+    Default is 'generate' for more detailed responses"""
+    config = load_config()
+    return config.get("api_mode", "generate")
 
 
 def detect_providers():
@@ -107,8 +122,29 @@ def detect_providers():
         req = urllib.request.Request(f"{DMR_ENDPOINT}/models")
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.load(resp)
-            models = data.get("data", [])
-            model_names = [m.get("id") for m in models if m.get("id")]
+
+            # Handle different response formats
+            model_names = []
+            if isinstance(data, list):
+                # Direct list response
+                raw_models = data
+            elif isinstance(data, dict):
+                # Dict with "data" key
+                raw_models = data.get("data", [])
+            else:
+                raw_models = []
+
+            for m in raw_models:
+                if isinstance(m, dict):
+                    # Try "id" or "tags" for model name
+                    model_id = m.get("id")
+                    if not model_id and m.get("tags"):
+                        model_id = m["tags"][0] if m["tags"] else None
+                    if model_id:
+                        model_names.append(model_id)
+                elif isinstance(m, str):
+                    model_names.append(m)
+
             available["docker-model-runner"] = {
                 "endpoint": DMR_ENDPOINT,
                 "models": model_names,
@@ -160,6 +196,8 @@ def select_model(prompt, provider_hint=None):
     """Select best model for the given prompt"""
     log(f"Selecting model for prompt (length: {len(prompt)} chars)")
     available = detect_providers()
+    preference = get_model_preference()
+    log(f"Model preference: {preference}")
 
     if not available or all(p.get("status") != "running" for p in available.values()):
         log("No providers running, attempting fallback to llama3.2", "ERROR")
@@ -168,29 +206,82 @@ def select_model(prompt, provider_hint=None):
         except:
             return None, None, None
 
-    # Get first available provider (sorted by priority)
-    # Filter out cloud models (they require authentication)
     cloud_suffixes = ["-cloud", ":cloud"]
 
     for name, info in available.items():
         if info.get("status") == "running" and info.get("models"):
-            # Filter models: prefer local models over cloud models
-            local_models = [
-                m for m in info["models"] if not any(s in m for s in cloud_suffixes)
-            ]
+            models = info["models"]
 
-            if local_models:
-                model = local_models[0]  # Pick first local model
-                log(f"Selected model: {model} (local) from provider: {name}")
-                return model, name, info["endpoint"]
+            if preference == "local_first":
+                # Filter: prefer local models first
+                local_models = [
+                    m for m in models if not any(s in m for s in cloud_suffixes)
+                ]
+                if local_models:
+                    model = local_models[0]
+                    log(f"Selected model: {model} (local) from provider: {name}")
+                    return model, name, info["endpoint"]
+                # Fallback to cloud if no local
+                if models:
+                    model = models[0]
+                    log(
+                        f"Selected model: {model} (cloud fallback) from provider: {name}"
+                    )
+                    return model, name, info["endpoint"]
 
-            # Fallback to cloud models if no local models available
-            if info["models"]:
-                model = info["models"][0]
-                log(f"Selected model: {model} (cloud) from provider: {name}", "WARN")
+            elif preference == "cloud_first":
+                # Filter: prefer cloud models first
+                cloud_models = [
+                    m for m in models if any(s in m for s in cloud_suffixes)
+                ]
+                if cloud_models:
+                    model = cloud_models[0]
+                    log(f"Selected model: {model} (cloud) from provider: {name}")
+                    return model, name, info["endpoint"]
+                # Fallback to local if no cloud
+                local_models = [
+                    m for m in models if not any(s in m for s in cloud_suffixes)
+                ]
+                if local_models:
+                    model = local_models[0]
+                    log(
+                        f"Selected model: {model} (local fallback) from provider: {name}"
+                    )
+                    return model, name, info["endpoint"]
+
+            else:  # "auto" - use first available
+                model = models[0]
+                log(f"Selected model: {model} (auto) from provider: {name}")
                 return model, name, info["endpoint"]
 
     log("No models available from any provider", "ERROR")
+    return None, None, None
+
+
+def get_fallback_model(current_model=None):
+    """Get a fallback model (local model) when primary fails"""
+    available = detect_providers()
+    cloud_suffixes = ["-cloud", ":cloud"]
+
+    for name, info in available.items():
+        if info.get("status") == "running" and info.get("models"):
+            models = info["models"]
+            # Prefer local models
+            local_models = [
+                m for m in models if not any(s in m for s in cloud_suffixes)
+            ]
+            if local_models:
+                # Skip current model if provided
+                for m in local_models:
+                    if m != current_model:
+                        log(f"Fallback model: {m} (local) from provider: {name}")
+                        return m, name, info["endpoint"]
+            # If no local, try any other model
+            for m in models:
+                if m != current_model:
+                    log(f"Fallback model: {m} from provider: {name}")
+                    return m, name, info["endpoint"]
+
     return None, None, None
 
 
@@ -355,59 +446,184 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
         # Log user message preview (truncated)
         log(f"[{request_id}] User message: {user_message[:100]}...")
 
-        # Select best model
-        model, provider, endpoint = select_model(user_message)
+        # Try request with fallback on failure
+        fallback_attempted = False
+        model = None
+        provider = None
+        endpoint = None
+        while True:
+            # Select best model (only on first iteration)
+            if not fallback_attempted:
+                model, provider, endpoint = select_model(user_message)
+            else:
+                log(f"[{request_id}] Trying fallback model...")
+                model, provider, endpoint = get_fallback_model(model)
 
-        if not model:
-            log(f"[{request_id}] No models available", "ERROR")
-            self.send_json({"error": "No models available"}, 503)
-            return
+            if not model:
+                if fallback_attempted:
+                    log(f"[{request_id}] No fallback model available", "ERROR")
+                    self.send_json({"error": "No models available"}, 503)
+                else:
+                    log(f"[{request_id}] No models available", "ERROR")
+                    self.send_json({"error": "No models available"}, 503)
+                return
 
-        log(f"[{request_id}] Using model: {model} (provider: {provider})")
+            log(f"[{request_id}] Using model: {model} (provider: {provider})")
 
-        # Forward to provider (Ollama format)
-        if provider == "ollama":
-            # Use /api/chat for proper chat handling
-            ollama_data = {
-                "model": model,
-                "messages": messages,
-                "stream": request_data.get("stream", False),
-            }
+            # Forward to provider (Ollama format)
+            if provider == "ollama":
+                api_mode = get_api_mode()
+                log(f"[{request_id}] API mode: {api_mode}")
 
-            result = forward_request(endpoint, "/api/chat", json.dumps(ollama_data))
+                if api_mode == "generate":
+                    # Use /api/generate for more detailed responses
+                    ollama_data = {
+                        "model": model,
+                        "prompt": prompt,
+                        "stream": request_data.get("stream", False),
+                    }
+                    result = forward_request(
+                        endpoint, "/api/generate", json.dumps(ollama_data)
+                    )
 
-            # Convert back to OpenAI format
-            try:
-                ollama_result = json.loads(result)
-                # Ollama chat API returns: {"message": {"role": "assistant", "content": "..."}, ...}
-                response_content = ollama_result.get("message", {}).get("content", "")
-                response = {
-                    "id": "chatcmpl-" + os.urandom(8).hex(),
-                    "object": "chat.completion",
-                    "created": 0,
-                    "model": model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": response_content,
-                            },
-                            "finish_reason": "stop",
+                    # Check for error in response
+                    try:
+                        result_check = json.loads(result)
+                        if "error" in result_check:
+                            log(
+                                f"[{request_id}] Model error: {result_check.get('error')}",
+                                "ERROR",
+                            )
+                            if not fallback_attempted:
+                                fallback_attempted = True
+                                continue
+                            self.send_json({"error": result_check.get("error")}, 500)
+                            return
+                    except:
+                        pass
+
+                    # Convert generate response to OpenAI format
+                    try:
+                        ollama_result = json.loads(result)
+                        response_content = ollama_result.get("response", "")
+                        response = {
+                            "id": "chatcmpl-" + os.urandom(8).hex(),
+                            "object": "chat.completion",
+                            "created": 0,
+                            "model": model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": response_content,
+                                    },
+                                    "finish_reason": "stop",
+                                }
+                            ],
                         }
-                    ],
-                }
-                log(f"[{request_id}] Response: {response_content[:100]}...")
-                self.send_json(response)
-            except Exception as e:
-                log(f"[{request_id}] Error parsing response: {e}", "ERROR")
-                log(
-                    f"[{request_id}] Raw response (first 500 chars): {result[:500]}",
-                    "ERROR",
-                )
-                self.send_json({"error": str(e), "detail": result[:500]}, 500)
-        else:
-            # Docker Model Runner - use OpenAI format
+                        log(f"[{request_id}] Response: {response_content[:100]}...")
+                        self.send_json(response)
+                        return
+                    except Exception as e:
+                        log(f"[{request_id}] Error parsing response: {e}", "ERROR")
+                        log(f"[{request_id}] Raw response: {result[:500]}", "ERROR")
+                        if not fallback_attempted:
+                            fallback_attempted = True
+                            continue
+                        self.send_json({"error": str(e), "detail": result[:500]}, 500)
+                        return
+                else:
+                    # Use /api/chat (default)
+                    ollama_data = {
+                        "model": model,
+                        "messages": messages,
+                        "stream": request_data.get("stream", False),
+                    }
+
+                    result = forward_request(
+                        endpoint, "/api/chat", json.dumps(ollama_data)
+                    )
+
+                    # Check for error in response
+                    try:
+                        result_check = json.loads(result)
+                        if "error" in result_check:
+                            log(
+                                f"[{request_id}] Model error: {result_check.get('error')}",
+                                "ERROR",
+                            )
+                            if not fallback_attempted:
+                                fallback_attempted = True
+                                continue
+                            self.send_json({"error": result_check.get("error")}, 500)
+                            return
+                    except:
+                        pass
+
+                    # Convert back to OpenAI format
+                    try:
+                        ollama_result = json.loads(result)
+                        # Ollama chat API returns: {"message": {"role": "assistant", "content": "..."}, ...}
+                        response_content = ollama_result.get("message", {}).get(
+                            "content", ""
+                        )
+                        response = {
+                            "id": "chatcmpl-" + os.urandom(8).hex(),
+                            "object": "chat.completion",
+                            "created": 0,
+                            "model": model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": response_content,
+                                    },
+                                    "finish_reason": "stop",
+                                }
+                            ],
+                        }
+                        log(f"[{request_id}] Response: {response_content[:100]}...")
+                        self.send_json(response)
+                        return
+                    except Exception as e:
+                        log(f"[{request_id}] Error parsing response: {e}", "ERROR")
+                        log(
+                            f"[{request_id}] Raw response (first 500 chars): {result[:500]}",
+                            "ERROR",
+                        )
+                        if not fallback_attempted:
+                            fallback_attempted = True
+                            continue
+                        self.send_json({"error": str(e), "detail": result[:500]}, 500)
+                        return
+            else:
+                # Docker Model Runner - use OpenAI format
+                result = forward_request(endpoint, "/v1/chat/completions", body)
+
+                # Check for error
+                try:
+                    result_check = json.loads(result)
+                    if "error" in result_check:
+                        log(
+                            f"[{request_id}] DMR error: {result_check.get('error')}",
+                            "ERROR",
+                        )
+                        if not fallback_attempted:
+                            fallback_attempted = True
+                            continue
+                        self.send_json(result_check, 500)
+                        return
+                except:
+                    pass
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(result.encode())
+                log(f"[{request_id}] Response sent to client")
+                return
             log(f"[{request_id}] Forwarding to DMR")
             result = forward_request(endpoint, "/v1/chat/completions", body)
             self.send_response(200)
