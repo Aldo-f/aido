@@ -569,8 +569,6 @@ parse_arguments() {
             --debug|-d) DEBUG_MODE=true; shift ;;
             --provider|-p) PROVIDER_MODE="$2"; shift 2 ;;
             --model|-m) SPECIFIC_MODEL="$2"; shift 2 ;;
-            --ollama) PROVIDER_MODE="ollama"; shift ;;
-            --dmr) PROVIDER_MODE="docker-model-runner"; shift ;;
             --auto) PROVIDER_MODE="auto"; shift ;;
             --list|-l) LIST_MODELS=true; shift ;;
             --status|-s) SHOW_STATUS=true; shift ;;
@@ -600,9 +598,7 @@ show_help() {
     echo "  --install                Install globally"
     echo "  --uninstall              Uninstall"
     echo "  --auto                  Auto-select (default)"
-    echo "  --provider, -p <mode>   Provider mode"
-    echo "  --ollama                 Ollama only"
-    echo "  --dmr                    Docker Model Runner only"
+    echo "  --provider, -p <mode>   Provider mode (ollama/dmr/cloud)"
     echo "  --model, -m <model>      Specific model"
     echo "  --list, -l               List models"
     echo "  --status, -s             Show status"
@@ -611,8 +607,10 @@ show_help() {
     echo "  --list-providers         List providers"
     echo "  --help, -h              Help"
     echo ""
-    echo "Providers:"
-    echo "  auto (default), ollama, dmr"
+    echo "Examples:"
+    echo "  aido 'Hello'                   # Auto mode"
+    echo "  aido -p ollama 'Hello'         # Use Ollama"
+    echo "  aido -p dmr 'Hello'            # Use Docker Model Runner"
 }
 
 show_status() {
