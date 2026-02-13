@@ -41,6 +41,100 @@ QUERY=""
 INSTALL_MODE=false
 UNINSTALL_MODE=false
 LIST_PROVIDERS=false
+MODELS_MODE=false
+INSTALL_MODELS_MODE=false
+SPECIFIC_MODELS_TO_INSTALL=""
+MODEL_LIST_AVAILABLE=false
+
+# ==================== OLLAMA DETECTION ====================
+
+detect_ollama_install() {
+    if command -v ollama >/dev/null 2>&1; then
+        echo "cli"
+    elif [ -f "/usr/local/bin/ollama" ]; then
+        echo "binary"
+    elif [ -f "$HOME/ollama" ]; then
+        echo "home"
+    else
+        echo "service"
+    fi
+}
+
+install_model() {
+    local model="$1"
+    local install_type
+    install_type=$(detect_ollama_install)
+    
+    case "$install_type" in
+        cli)
+            info "Installing $model via ollama pull..."
+            if command -v ollama >/dev/null 2>&1; then
+                ollama pull "$model"
+                success "Installed: $model"
+            else
+                error "Ollama CLI not found"
+                return 1
+            fi
+            ;;
+        binary|home)
+            info "Ollama binary found at $HOME/ollama or /usr/local/bin"
+            info "Run 'ollama pull $model' to install models"
+            return 1
+            ;;
+        service)
+            error "Ollama appears to be running as a service"
+            info "Install Ollama CLI to download models:"
+            echo "  macOS: https://ollama.com/download/mac"
+            echo "  Windows: https://ollama.com/download/windows"
+            echo "  Linux: curl -fsSL https://ollama.com/install.sh | sh"
+            return 1
+            ;;
+    esac
+}
+
+install_recommended_models() {
+    local install_type
+    install_type=$(detect_ollama_install)
+    
+    if [ "$install_type" != "cli" ]; then
+        error "Ollama CLI not available"
+        info "To install models, install Ollama from: https://ollama.com"
+        echo ""
+        echo "Or browse models at: https://ollama.com/search?q=cloud"
+        return 1
+    fi
+    
+    local models=("llama3.2:latest" "codellama:latest" "mistral:latest")
+    
+    echo -e "${CYAN}Installing recommended models...${NC}"
+    echo ""
+    
+    for model in "${models[@]}"; do
+        info "Installing $model..."
+        if ollama pull "$model" 2>/dev/null; then
+            success "$model installed"
+        else
+            warning "Failed to install $model (may already be installed or unavailable)"
+        fi
+        echo ""
+    done
+    
+    success "Done! Run 'aido --list' to see available models"
+}
+
+list_installable_models() {
+    echo -e "${CYAN}Recommended models to install:${NC}"
+    echo ""
+    echo "  llama3.2:latest     General purpose (recommended)"
+    echo "  codellama:latest    Code generation"
+    echo "  mistral:latest      Fast/lightweight"
+    echo ""
+    echo "Browse more: https://ollama.com/search?q=cloud"
+    echo ""
+    echo "Usage:"
+    echo "  aido models install                    # Install recommended"
+    echo "  aido models install llama3.2:latest   # Install specific"
+}
 
 # Provider endpoints
 OLLAMA_ENDPOINT="${OLLAMA_ENDPOINT:-http://localhost:11434}"
@@ -250,8 +344,8 @@ get_all_available_models() {
         local ollama_models
         ollama_models=$(echo "$providers" | jq '.ollama.models')
         if [ "$ollama_models" != "null" ] && [ -n "$ollama_models" ]; then
-            all_models=$(echo "$all_models" | jq --argjson models "$ollama_models" \
-                '. + $models | map({"name": ., "provider": "ollama"})' 2>/dev/null || echo "$all_models")
+            all_models=$(jq -n --argjson current "$all_models" --argjson new "$ollama_models" \
+                '$current + ($new | map({"name": ., "provider": "ollama"}))' 2>/dev/null || echo "$all_models")
         fi
     fi
     
@@ -262,8 +356,8 @@ get_all_available_models() {
         local dmr_models
         dmr_models=$(echo "$providers" | jq '.["docker-model-runner"].models')
         if [ "$dmr_models" != "null" ] && [ -n "$dmr_models" ]; then
-            all_models=$(echo "$all_models" | jq --argjson models "$dmr_models" \
-                '. + $models | map({"name": ., "provider": "docker-model-runner"})' 2>/dev/null || echo "$all_models")
+            all_models=$(jq -n --argjson current "$all_models" --argjson new "$dmr_models" \
+                '$current + ($new | map({"name": ., "provider": "docker-model-runner"}))' 2>/dev/null || echo "$all_models")
         fi
     fi
     
@@ -287,6 +381,14 @@ select_model_auto() {
     
     if [ "$(echo "$all_models" | jq 'length')" -eq 0 ]; then
         error "No models available"
+        echo ""
+        info "To install models, run:"
+        echo "  aido models install              # Install recommended models"
+        echo "  aido models install <model>     # Install specific model"
+        echo ""
+        info "Or browse available models at:"
+        echo "  https://ollama.com/search?q=cloud"
+        echo ""
         return 1
     fi
     
@@ -629,6 +731,19 @@ parse_arguments() {
             --list-providers) LIST_PROVIDERS=true; shift ;;
             --install) INSTALL_MODE=true; shift ;;
             --uninstall) UNINSTALL_MODE=true; shift ;;
+            models|--models)
+                MODELS_MODE="${2:-}"
+                if [ -n "$MODELS_MODE" ] && [ "${MODELS_MODE:0:1}" != "-" ]; then
+                    shift
+                else
+                    MODELS_MODE="list"
+                fi
+                if [ -n "${2:-}" ] && [ "${2:0:1}" != "-" ]; then
+                    SPECIFIC_MODELS_TO_INSTALL="$2"
+                    shift
+                fi
+                shift
+                ;;
             proxy|--proxy)
                 PROXY_MODE="${2:-}"
                 [ -n "$PROXY_MODE" ] && [ "${PROXY_MODE:0:1}" != "-" ] && shift
@@ -669,12 +784,18 @@ show_help() {
     echo "  aido proxy stop          Stop proxy server"
     echo "  aido proxy status        Check proxy status"
     echo ""
+    echo "Models Commands:"
+    echo "  aido models list         Show installable models"
+    echo "  aido models install      Install recommended models"
+    echo "  aido models install <m>  Install specific model"
+    echo ""
     echo "Examples:"
     echo "  aido 'Hello'                   # Auto mode"
     echo "  aido -p ollama 'Hello'         # Use Ollama"
     echo "  aido -p dmr 'Hello'            # Use Docker Model Runner"
     echo "  aido proxy start               # Start proxy on port 11999"
     echo "  aido proxy start --port 8080   # Start on custom port"
+    echo "  aido models install            # Install recommended models"
 }
 
 show_status() {
@@ -724,6 +845,30 @@ main() {
                 ;;
             *)
                 echo "Usage: aido proxy [start|stop|status] [--port PORT]"
+                exit 1
+                ;;
+        esac
+    fi
+    
+    # Check for models subcommand
+    if [ "$1" = "models" ]; then
+        local models_action="${2:-list}"
+        
+        case "$models_action" in
+            install)
+                if [ -n "${3:-}" ]; then
+                    install_model "$3"
+                else
+                    install_recommended_models
+                fi
+                exit $?
+                ;;
+            list)
+                list_installable_models
+                exit $?
+                ;;
+            *)
+                echo "Usage: aido models [install|list]"
                 exit 1
                 ;;
         esac
