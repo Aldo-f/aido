@@ -144,6 +144,10 @@ install_aido() {
     local source_file
     source_file=$(readlink -f "${BASH_SOURCE[0]}")
     
+    # Get actual script directory (resolve symlinks)
+    local actual_dir
+    actual_dir=$(dirname "$source_file")
+    
     echo "Installing AIDO globally..."
     
     if [ -w "/usr/local/bin" ]; then
@@ -167,10 +171,10 @@ install_aido() {
         echo "Run: source ~/.bashrc"
     fi
     
-    # Copy proxy to DATA_DIR for portability
-    if [ -d "$SCRIPT_DIR/proxy" ]; then
+    # Copy proxy to DATA_DIR for portability (always)
+    if [ -d "$actual_dir/proxy" ]; then
         mkdir -p "$DATA_DIR/proxy"
-        cp -r "$SCRIPT_DIR/proxy/"* "$DATA_DIR/proxy/" 2>/dev/null || true
+        cp -r "$actual_dir/proxy/"* "$DATA_DIR/proxy/" 2>/dev/null || true
         success "Installed proxy to $DATA_DIR/proxy"
     fi
     
