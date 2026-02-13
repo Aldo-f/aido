@@ -1,0 +1,10 @@
+# Test data
+/tmp/
+*.swp
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
