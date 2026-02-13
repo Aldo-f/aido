@@ -119,18 +119,18 @@ test_session_delete() {
 }
 
 test_provider_auto() {
-    output=$(run_aido --debug --auto "test" 2>&1 || true)
+    output=$(timeout 5 run_aido --debug --auto "test" 2>&1 || true)
     # Should show auto mode
     return 0
 }
 
 test_provider_ollama() {
-    output=$(run_aido --debug --ollama "test" 2>&1 || true)
+    output=$(timeout 5 run_aido --debug --ollama "test" 2>&1 || true)
     return 0
 }
 
 test_provider_dmr() {
-    output=$(run_aido --debug --dmr "test" 2>&1 || true)
+    output=$(timeout 5 run_aido --debug --dmr "test" 2>&1 || true)
     return 0
 }
 
@@ -141,6 +141,49 @@ test_debug_flag() {
 
 test_unknown_option() {
     ! run_aido --unknown-option 2>&1 | grep -q "Unknown" || return 0
+}
+
+# Proxy tests (use real system, not test home)
+test_proxy_running() {
+    timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1 || {
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    }
+}
+
+test_proxy_health() {
+    output=$(timeout 3 curl -s http://localhost:11999/health 2>&1) || {
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    }
+    echo "$output" | grep -q "ok"
+}
+
+test_proxy_models() {
+    output=$(timeout 3 curl -s http://localhost:11999/models 2>&1) || {
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    }
+    echo "$output" | grep -q "ollama"
+}
+
+# OpenCode integration test
+test_opencode_integration() {
+    if ! command -v opencode >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: opencode not found${NC}"
+        return 0
+    fi
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Just check opencode can list models using aido
+    output=$(timeout 10 opencode models aido 2>&1 || true)
+    if echo "$output" | grep -qi "error\|fail"; then
+        return 1
+    fi
+    return 0
 }
 
 main() {
@@ -171,6 +214,12 @@ main() {
     
     echo -e "${BLUE}Error Handling:${NC}"
     run_test test_unknown_option
+    
+    echo -e "${BLUE}Proxy:${NC}"
+    run_test test_proxy_running
+    run_test test_proxy_health
+    run_test test_proxy_models
+    run_test test_opencode_integration
     
     echo ""
     echo -e "${BLUE}=== Results ===${NC}"
