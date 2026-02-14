@@ -2,7 +2,7 @@
 
 ## Overview
 
-AIDO is an intelligent AI CLI assistant with multi-provider support (Ollama, Docker Model Runner, Cloud). The codebase consists of:
+AIDO is an intelligent AI CLI assistant with multi-provider support (Ollama, Docker Model Runner, OpenCode Zen, Google Gemini, OpenAI). The codebase consists of:
 - **Bash**: `aido.sh` (main CLI), `tests/aido_test.sh` (test suite)
 - **Python**: `proxy/server.py` (HTTP proxy server)
 
@@ -74,54 +74,95 @@ apt-get install shfmt
 pip install ruff
 ```
 
-### Starting the Proxy
+### Server Commands
 
 ```bash
 # Start proxy on default port 11999
-./aido.sh proxy start
+./aido.sh serve
 
 # Start on custom port
-./aido.sh proxy start --port 8080
-
-# Check status
-./aido.sh proxy status
+./aido.sh serve 8080
 
 # Stop proxy
-./aido.sh proxy stop
+./aido.sh stop
+
+# Check status
+./aido.sh status
 ```
 
-### General CLI Usage
+### Query Commands
 
 ```bash
-# Install globally, list models, show status, interactive mode
-./aido.sh --install
-./aido.sh --list
-./aido.sh --status
-./aido.sh --interactive
+# Run a query
+./aido.sh run "Hello"
+
+# Interactive mode
+./aido.sh run
+
+# Continue last session
+./aido.sh run -c
 ```
 
-### OpenCode Integration
+### Model Commands
 
 ```bash
-# Generate opencode.jsonc to use AIDO as OpenCode provider
-./aido.sh opencode config
-
-# Open OpenCode Zen auth page to get API key
-./aido.sh opencode connect
-```
-
-### Models Management
-
-```bash
-# Install recommended models
-./aido.sh models install
-
-# Install specific model
-./aido.sh models install llama3.2:latest
-
 # List available models
-./aido.sh models list
+./aido.sh list
+
+# List providers
+./aido.sh providers
+
+# Download model
+./aido.sh pull llama3.2:latest
 ```
+
+### Session Commands
+
+```bash
+# List sessions
+./aido.sh session list
+
+# Create new session
+./aido.sh session new <name>
+
+# Delete session
+./aido.sh session delete <name>
+```
+
+### Configuration Commands
+
+```bash
+# Check all providers
+./aido.sh init
+
+# Connect OpenCode to use AIDO
+./aido.sh connect opencode
+
+# Open auth page
+./aido.sh auth zen
+./aido.sh auth gemini
+./aido.sh auth openai
+
+# Manage API keys
+./aido.sh key list
+./aido.sh key add <provider> <key> [name]
+./aido.sh key delete <provider> <index>
+./aido.sh key delete-all <provider>
+./aido.sh key test <provider>
+```
+
+### Other Options
+
+```bash
+# Install globally
+./aido.sh --install
+
+# Show version
+./aido.sh --version
+./aido.sh -v
+
+# Show config
+./aido.sh --config
 
 ---
 
@@ -235,16 +276,19 @@ def safe_operation():
 ```
 aido/
 ├── Makefile                # Build/lint/format commands
-├── aido.sh                # Main CLI
+├── README.md              # User documentation
+├── aido.sh               # Main CLI
 ├── proxy/
 │   ├── __init__.py
 │   ├── database.py
-│   └── server.py          # HTTP proxy server
+│   └── server.py         # HTTP proxy server
+├── docs/                  # GitHub Pages documentation
+│   └── index.md
 ├── tests/
-│   ├── aido_test.sh       # Test suite
+│   ├── aido_test.sh      # Test suite
 │   └── aido_opencode_test.py
 ├── .gitignore
-└── AGENTS.md              # This file
+└── AGENTS.md             # This file
 ```
 
 ---
