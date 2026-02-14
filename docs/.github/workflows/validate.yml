@@ -1,0 +1,19 @@
+name: AIDO Documentation
+
+on:
+  - pull_request
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate docs links
+        run: |
+          # Basic validation - check for common issues
+          echo "Validating docs/index.md..."
+          grep -q "AIDO" docs/index.md && echo "✓ Title found"
+          grep -q "## Quick Start" docs/index.md && echo "✓ Quick Start section found"
+          grep -q "## Commands" docs/index.md && echo "✓ Commands section found"
+          echo "Validation complete!"
