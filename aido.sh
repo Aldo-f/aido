@@ -1252,6 +1252,30 @@ proxy_status() {
 
 # ==================== CLI PARSING ====================
 
+is_known_command() {
+    local cmd="$1"
+    case "$cmd" in
+        serve|stop|status|list|providers|run|pull|session|init|connect|auth|key)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+show_unknown_command() {
+    local cmd="$1"
+    echo -e "${RED}Error: Unknown command: $cmd${NC}"
+    echo ""
+    echo "Did you mean:"
+    echo "  aido serve        # Start proxy server"
+    echo "  aido run <query> # Run a query"
+    echo ""
+    echo "Use 'aido --help' to see available commands"
+    exit 1
+}
+
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -1298,8 +1322,14 @@ parse_arguments() {
                 exit 0
                 ;;
             --help|-h) show_help; exit 0 ;;
-            -*) error "Unknown: $1"; show_help; exit 1 ;;
-            *) QUERY="$*"; break ;;
+            -*) error "Unknown option: $1"; show_help; exit 1 ;;
+            *)
+                if [ -n "$1" ] && is_known_command "$1"; then
+                    error "Command '$1' must be specified before the query"
+                    exit 1
+                fi
+                show_unknown_command "$1"
+                ;;
         esac
     done
 }
