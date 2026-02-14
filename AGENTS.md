@@ -13,28 +13,65 @@ AIDO is an intelligent AI CLI assistant with multi-provider support (Ollama, Doc
 ### Running Tests
 
 ```bash
-# Run all tests
-cd /media/aldo/shared/aido && ./tests/aido_test.sh
+# Run all tests (using Makefile)
+make test
 
-# Run a single test by name
-cd /media/aldo/shared/aido && AIDO_TEST_DIR=/tmp/aido-test bash -c '
-  source ./tests/aido_test.sh
-  test_name() { echo "test content" && return 0; }
-  test_name
-'
+# Run all tests (direct)
+cd /media/aldo/shared/aido && ./tests/aido_test.sh
 
 # Run with specific home directory
 HOME=/tmp/test-home ./tests/aido_test.sh
+
+# Run with custom test data directory
+AIDO_TEST_DIR=/tmp/aido-test ./tests/aido_test.sh
 ```
 
-### Python Linting
+## Development Commands
+
+### Using Makefile (recommended)
+```bash
+# Install formatters (shfmt, ruff)
+make install-tools
+
+# Check code without modifying (lint)
+make lint
+
+# Auto-format code
+make format
+
+# Run tests
+make test
+
+# Run lint + test
+make all
+```
+
+### Individual Commands
 
 ```bash
-# Run ruff linter (project uses ruff)
-cd /media/aldo/shared/aido && python3 -m ruff check proxy/
+# Format Bash
+shfmt -w aido.sh
 
-# Auto-fix issues
-cd /media/ado/shared/aido && python3 -m ruff check proxy/ --fix
+# Format Python
+ruff format proxy/
+
+# Lint Bash (check only)
+shfmt -d aido.sh
+
+# Lint Python
+ruff check proxy/
+```
+
+### Install Formatters Manually
+
+```bash
+# macOS
+brew install shfmt
+pip install ruff
+
+# Linux
+apt-get install shfmt
+pip install ruff
 ```
 
 ### Starting the Proxy
@@ -56,17 +93,34 @@ cd /media/ado/shared/aido && python3 -m ruff check proxy/ --fix
 ### General CLI Usage
 
 ```bash
-# Install globally
+# Install globally, list models, show status, interactive mode
 ./aido.sh --install
-
-# List models
 ./aido.sh --list
-
-# Show status
 ./aido.sh --status
-
-# Interactive mode
 ./aido.sh --interactive
+```
+
+### OpenCode Integration
+
+```bash
+# Generate opencode.jsonc to use AIDO as OpenCode provider
+./aido.sh opencode config
+
+# Open OpenCode Zen auth page to get API key
+./aido.sh opencode connect
+```
+
+### Models Management
+
+```bash
+# Install recommended models
+./aido.sh models install
+
+# Install specific model
+./aido.sh models install llama3.2:latest
+
+# List available models
+./aido.sh models list
 ```
 
 ---
@@ -80,20 +134,17 @@ cd /media/ado/shared/aido && python3 -m ruff check proxy/ --fix
 - Double-quote all variable expansions: `"$variable"`
 
 ### Naming Conventions
-- Variables: `LOWER_CASE_WITH_UNDERSCORES` (e.g., `PROVIDER_MODE`)
-- Functions: `snake_case` (e.g., `detect_providers`)
-- Constants: `UPPER_CASE` (e.g., `OLLAMA_ENDPOINT`)
+- Variables: `LOWER_CASE_WITH_UNDERSCORES`
+- Functions: `snake_case`
+- Constants: `UPPER_CASE`
 - Boolean variables: Use `true`/`false` strings, not `0`/`1`
 
 ### Formatting
-- Indent with 4 spaces
-- Opening brace on same line: `do_something() {`
-- Use local variables in functions: `local var_name`
-- Use descriptive variable names (no single letters except in loops)
+- Indent with 4 spaces, opening brace on same line
+- Use `local` variables in functions
 
 ### Error Handling
 ```bash
-# Proper error handling
 function risky_command() {
     local result
     result=$(command_that_might_fail 2>/dev/null) || {
@@ -106,16 +157,9 @@ function risky_command() {
 
 ### Conditionals
 ```bash
-# String comparison
 if [ "$var" = "value" ]; then
-
-# File check
 if [ -f "$file" ]; then
-
-# Command success
 if command; then
-
-# Negation
 if ! command; then
 ```
 
@@ -130,7 +174,6 @@ if ! command; then
 
 ### Imports
 ```python
-# Standard library
 import os
 import sys
 import json
@@ -138,10 +181,8 @@ import signal
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-import urllib.request
-import urllib.error
 
-# No third-party imports (uses stdlib only)
+# No third-party imports (stdlib only)
 ```
 
 ### Type Hints
@@ -154,18 +195,18 @@ def optional_param(name: str, value: str | None = None) -> dict[str, Any]:
 ```
 
 ### Naming Conventions
-- Functions/variables: `snake_case` (e.g., `load_config`)
-- Classes: `PascalCase` (e.g., `AIDOProxyHandler`)
-- Constants: `UPPER_CASE` (e.g., `DEFAULT_PORT`)
+- Functions/variables: `snake_case`
+- Classes: `PascalCase`
+- Constants: `UPPER_CASE`
 - Private functions: `_private_function()`
 
 ### Docstrings
 ```python
 def load_config():
-    """Load AIDO configuration from config file.
+    """Load config from file.
     
     Returns:
-        dict: Configuration dictionary with providers and settings.
+        dict: Configuration dictionary.
     """
 ```
 
@@ -178,14 +219,14 @@ def safe_operation():
         log(f"Value error: {e}", "ERROR")
         return None
     except Exception as e:
-        log(f"Unexpected error: {type(e).__name__}: {e}", "ERROR")
+        log(f"Unexpected error: {e}", "ERROR")
         raise
 ```
 
 ### Logging
-- Use the `log()` function defined in server.py
-- Log levels: "INFO", "WARN", "ERROR"
-- Include request IDs for tracing: `log(f"[{request_id}] message")`
+- Use the `log()` function in server.py
+- Levels: "INFO", "WARN", "ERROR"
+- Include request IDs: `log(f"[{request_id}] message")`
 
 ---
 
@@ -193,14 +234,17 @@ def safe_operation():
 
 ```
 aido/
-├── aido.sh              # Main CLI (944 lines)
+├── Makefile                # Build/lint/format commands
+├── aido.sh                # Main CLI
 ├── proxy/
 │   ├── __init__.py
-│   └── server.py        # Proxy server (594 lines)
+│   ├── database.py
+│   └── server.py          # HTTP proxy server
 ├── tests/
-│   └── aido_test.sh     # Test suite (188 lines)
+│   ├── aido_test.sh       # Test suite
+│   └── aido_opencode_test.py
 ├── .gitignore
-└── AGENTS.md            # This file
+└── AGENTS.md              # This file
 ```
 
 ---
@@ -211,36 +255,69 @@ Config stored in: `~/.aido-data/config.json`
 
 Key settings:
 - `model_preference`: "cloud_first", "local_first", or "auto"
-- `api_mode`: "chat" or "generate" (default: generate for detailed responses)
+- `api_mode`: "chat" or "generate" (default: generate)
 
----
+### Provider Configuration
 
-## Known Issues
+```json
+{
+  "providers": {
+    "ollama": {
+      "enabled": true,
+      "endpoint": "http://localhost:11434"
+    },
+    "docker-model-runner": {
+      "enabled": true,
+      "endpoint": "http://localhost:12434"
+    },
+    "opencode-zen": {
+      "enabled": true,
+      "keys": [
+        {"key": "sk-zen-xxx-1", "name": "primary"},
+        {"key": "sk-zen-xxx-2", "name": "backup"}
+      ]
+    },
+    "gemini": {
+      "enabled": true,
+      "keys": [
+        {"key": "gemini-api-key"}
+      ]
+    }
+  }
+}
+```
 
-1. **DMR Detection**: Error in logs: `'list' object has no attribute 'get'` - needs fix in `detect_providers()`
-2. **OpenCode Integration**: Testing proxy with `/api/generate` mode
+Multi-key support:
+- Keys are tried sequentially
+- On HTTP 429 (rate limit) or 401/403 (auth error), the key is skipped and the next key is tried
+- Optional `name` field for key identification
 
----
+### Connect vs Auth (OpenCode Integration)
 
-## Key Functions
+Understanding the difference between `connect` and `auth`:
 
-### Bash (aido.sh)
-- `detect_providers()` - Detect available AI providers
-- `select_model()` - Auto-select best model for query
-- `execute_query()` - Run query against selected model
-- `proxy_start/stop/status()` - Manage proxy server
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `aido connect opencode` | Configure OpenCode to use AIDO as a provider | Similar to `ollama launch` |
+| `aido auth zen` | Open OpenCode Zen auth page to get API key | Opens browser to opencode.ai/auth |
 
-### Python (proxy/server.py)
-- `detect_providers()` - Detect running providers
-- `select_model()` - Choose model based on preference
-- `forward_request()` - Proxy request to backend
-- `AIDOProxyHandler` - HTTP request handler
+**Flow:**
+```
+aido connect opencode
+    └── Configures OpenCode → AIDO can now be used in OpenCode
 
----
+aido auth zen
+    └── Gets API key → Then add with: aido key add opencode-zen <key>
+        └── AIDO can now use Zen models
+```
+
+**Why separate?**
+- `connect` is for **external tools** (OpenCode) to use AIDO
+- `auth` is for **adding credentials** to AIDO so it can access cloud providers
 
 ## Development Tips
 
-1. **Debug mode**: Use `--debug` flag to see verbose output
-2. **Test isolation**: Use `AIDO_TEST_DIR` env var to set test data directory
-3. **Proxy logging**: Check `~/.aido-data/logs/proxy.log` for proxy activity
+1. **Debug mode**: Use `--debug` flag for verbose output
+2. **Test isolation**: Use `AIDO_TEST_DIR` env var
+3. **Proxy logging**: Check `~/.aido-data/logs/proxy.log`
 4. **Quick restart**: Stop/start proxy to pick up config changes

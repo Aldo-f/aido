@@ -41,6 +41,12 @@ if not (DATA_DIR / "config.json").exists():
 # Provider endpoints
 OLLAMA_ENDPOINT = os.environ.get("OLLAMA_ENDPOINT", "http://localhost:11434")
 DMR_ENDPOINT = os.environ.get("DMR_ENDPOINT", "http://localhost:12434")
+GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com"
+OPENCODE_ZEN_ENDPOINT = "https://api.opencode.ai"
+
+# Key rotation state
+provider_key_index = {}  # {provider_name: current_key_index}
+failed_keys = {}  # {provider_name: set of failed key indices}
 
 # Ensure log directory exists
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +64,99 @@ def log(message, level="INFO"):
         print(f"[WARN] Could not write to log file: {e}")
 
 
+def get_provider_keys(provider_name: str) -> list:
+    """Get list of API keys for a provider from config.
+
+    Supports two formats:
+    - "key": "single-api-key" (backwards compatible)
+    - "keys": [{"key": "...", "name": "optional"}, ...]
+    """
+    config = load_config()
+    provider = config.get("providers", {}).get(provider_name, {})
+
+    # Single key format (backwards compatible)
+    if "key" in provider:
+        return [{"key": provider["key"], "name": "default"}]
+
+    # Multiple keys format
+    keys = provider.get("keys", [])
+    if keys:
+        return keys
+
+    # Check environment variable
+    env_key = os.environ.get(f"{provider_name.upper()}_API_KEY")
+    if env_key:
+        return [{"key": env_key, "name": "env"}]
+
+    return []
+
+
+def get_current_key_index(provider_name: str) -> int:
+    """Get current key index for provider"""
+    return provider_key_index.get(provider_name, 0)
+
+
+def get_next_key(provider_name: str) -> tuple[str | None, str | None]:
+    """Get next available key for provider.
+
+    Returns:
+        (api_key, key_name) or (None, None) if no keys available
+    """
+    keys = get_provider_keys(provider_name)
+    if not keys:
+        return None, None
+
+    # Initialize key index if needed
+    if provider_name not in provider_key_index:
+        provider_key_index[provider_name] = 0
+        failed_keys[provider_name] = set()
+
+    # Try keys in order, skipping failed ones
+    start_idx = provider_key_index[provider_name]
+    checked = 0
+
+    while checked < len(keys):
+        idx = (start_idx + checked) % len(keys)
+
+        if idx not in failed_keys.get(provider_name, set()):
+            provider_key_index[provider_name] = idx
+            key_info = keys[idx]
+            return key_info.get("key"), key_info.get("name")
+
+        checked += 1
+
+    log(f"All keys failed for provider: {provider_name}", "WARN")
+    return None, None
+
+
+def mark_key_failed(provider_name: str, status_code: int):
+    """Mark current key as failed based on error code.
+
+    Skip on:
+    - 401: Invalid/expired key
+    - 403: Forbidden
+    - 429: Rate limited
+    """
+    if status_code in (401, 403, 429):
+        current_idx = get_current_key_index(provider_name)
+        if provider_name not in failed_keys:
+            failed_keys[provider_name] = set()
+        failed_keys[provider_name].add(current_idx)
+        log(f"Key {current_idx} marked failed for {provider_name} (HTTP {status_code})")
+
+        # Reset to try next key
+        provider_key_index[provider_name] = (current_idx + 1) % len(
+            get_provider_keys(provider_name)
+        )
+
+
+def reset_failed_keys(provider_name: str):
+    """Reset failed keys state for provider (call on startup)"""
+    if provider_name in failed_keys:
+        failed_keys[provider_name].clear()
+    provider_key_index[provider_name] = 0
+
+
 def load_config():
     """Load AIDO configuration"""
     if CONFIG_FILE.exists():
@@ -71,15 +170,27 @@ def load_config():
                 "priority": 2,
                 "endpoint": DMR_ENDPOINT,
             },
+            "opencode-zen": {
+                "enabled": True,
+                "priority": 1,
+                "endpoint": OPENCODE_ZEN_ENDPOINT,
+                "keys": [],
+            },
+            "gemini": {
+                "enabled": True,
+                "priority": 2,
+                "endpoint": GEMINI_ENDPOINT,
+                "keys": [],
+            },
             "cloud": {
                 "enabled": False,
-                "priority": 3,
+                "priority": 10,
                 "endpoint": "https://api.openai.com",
             },
         },
         "proxy": {"enabled": True, "port": DEFAULT_PORT, "default_model": "auto"},
-        "model_preference": "cloud_first",  # "cloud_first", "local_first", or "auto"
-        "api_mode": "chat",  # "chat" or "generate"
+        "model_preference": "local_first",  # "cloud_first", "local_first", or "auto"
+        "api_mode": "generate",  # "chat" or "generate"
     }
 
 
@@ -166,6 +277,58 @@ def detect_providers():
         }
         log(f"DMR: not running - {e}", "WARN")
 
+    # Check OpenCode Zen
+    provider_config = providers.get("opencode-zen", {})
+    if provider_config.get("enabled", True):
+        keys = get_provider_keys("opencode-zen")
+        if keys:
+            available["opencode-zen"] = {
+                "endpoint": OPENCODE_ZEN_ENDPOINT,
+                "models": ["gpt-4o", "o1", "o1-mini", "o3-mini"],  # Known Zen models
+                "status": "running",
+                "keys": keys,
+            }
+            log(f"OpenCode Zen: running, {len(keys)} key(s)")
+        else:
+            available["opencode-zen"] = {
+                "status": "no keys",
+                "models": [],
+                "endpoint": OPENCODE_ZEN_ENDPOINT,
+            }
+            log("OpenCode Zen: no API keys configured", "WARN")
+    else:
+        available["opencode-zen"] = {
+            "status": "disabled",
+            "models": [],
+            "endpoint": OPENCODE_ZEN_ENDPOINT,
+        }
+
+    # Check Google Gemini
+    provider_config = providers.get("gemini", {})
+    if provider_config.get("enabled", True):
+        keys = get_provider_keys("gemini")
+        if keys:
+            available["gemini"] = {
+                "endpoint": GEMINI_ENDPOINT,
+                "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+                "status": "running",
+                "keys": keys,
+            }
+            log(f"Gemini: running, {len(keys)} key(s)")
+        else:
+            available["gemini"] = {
+                "status": "no keys",
+                "models": [],
+                "endpoint": GEMINI_ENDPOINT,
+            }
+            log("Gemini: no API keys configured", "WARN")
+    else:
+        available["gemini"] = {
+            "status": "disabled",
+            "models": [],
+            "endpoint": GEMINI_ENDPOINT,
+        }
+
     return available
 
 
@@ -242,7 +405,7 @@ Query: {prompt[:200]}
 Reply with only one word:"""
 
     try:
-        result = forward_request(
+        result, _ = forward_request(
             OLLAMA_ENDPOINT,
             "/api/generate",
             json.dumps(
@@ -253,6 +416,7 @@ Reply with only one word:"""
                     "options": {"temperature": 0.1},
                 }
             ),
+            provider_name="ollama",
         )
 
         response = json.loads(result)
@@ -411,8 +575,14 @@ def get_fallback_model(current_model=None):
     return None, None, None
 
 
-def forward_request(endpoint, path, data, stream=False):
-    """Forward request to provider"""
+def forward_request(
+    endpoint, path, data, stream=False, api_key=None, provider_name=None
+):
+    """Forward request to provider
+
+    Returns:
+        tuple: (response_body, status_code)
+    """
     url = f"{endpoint}{path}"
 
     request_id = str(uuid.uuid4())[:8]
@@ -420,36 +590,47 @@ def forward_request(endpoint, path, data, stream=False):
 
     headers = {"Content-Type": "application/json"}
 
+    # Add API key if provided
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
     req = urllib.request.Request(
         url, data=data.encode() if data else None, headers=headers, method="POST"
     )
 
     try:
         start_time = datetime.datetime.now()
+        status_code = 200
         if stream:
             response = urllib.request.urlopen(req, timeout=300)
         else:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 response = resp.read().decode()
+                status_code = resp.status
 
         duration = (datetime.datetime.now() - start_time).total_seconds()
         log(f"[{request_id}] Request successful ({duration:.2f}s)")
-        return response
+        return response, status_code
     except urllib.error.HTTPError as e:
         error_body = e.read().decode() if e.fp else ""
         log(
             f"[{request_id}] HTTP Error {e.code}: {e.reason} - {error_body[:200]}",
             "ERROR",
         )
+
+        # Mark key as failed for rate limiting (429) or auth errors (401/403)
+        if provider_name and e.code in (401, 403, 429):
+            mark_key_failed(provider_name, e.code)
+
         return json.dumps(
             {"error": f"HTTP {e.code}: {e.reason}", "detail": error_body[:500]}
-        )
+        ), e.code
     except Exception as e:
         log(
             f"[{request_id}] Request failed: {type(e).__name__}: {str(e)[:200]}",
             "ERROR",
         )
-        return json.dumps({"error": str(e)})
+        return json.dumps({"error": str(e)}), 500
 
 
 class AIDOProxyHandler(BaseHTTPRequestHandler):
@@ -598,8 +779,61 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
 
             request_start_time = datetime.datetime.now()
 
-            # Forward to provider (Ollama format)
-            if provider == "ollama":
+            # Cloud providers (OpenCode Zen, Gemini, OpenAI) - use OpenAI format
+            if provider in ("opencode-zen", "gemini", "cloud"):
+                api_key, key_name = get_next_key(provider)
+                if not api_key:
+                    log(f"[{request_id}] No API keys available for {provider}", "ERROR")
+                    if not fallback_attempted:
+                        fallback_attempted = True
+                        continue
+                    self.send_json({"error": f"No API keys for {provider}"}, 503)
+                    return
+
+                log(f"[{request_id}] Using {provider} key: {key_name or 'default'}")
+
+                # Forward to cloud provider
+                result, status_code = forward_request(
+                    endpoint,
+                    "/v1/chat/completions",
+                    body,
+                    api_key=api_key,
+                    provider_name=provider,
+                )
+
+                # Check for error (rate limit, auth error)
+                try:
+                    result_check = json.loads(result)
+                    if "error" in result_check:
+                        error_code = result_check.get("error", {}).get("code")
+                        if status_code in (401, 403, 429) or error_code in (
+                            "rate_limit",
+                            "invalid_api_key",
+                        ):
+                            log(
+                                f"[{request_id}] {provider} error: {result_check.get('error')}, trying next key",
+                                "WARN",
+                            )
+                            if not fallback_attempted:
+                                fallback_attempted = True
+                                continue
+                        self.send_json(
+                            result_check, status_code if status_code else 500
+                        )
+                        return
+                except:
+                    pass
+
+                # Send successful response
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(result.encode())
+                log(f"[{request_id}] Response sent to client")
+                return
+
+            # Local Ollama provider
+            elif provider == "ollama":
                 api_mode = get_api_mode()
                 log(f"[{request_id}] API mode: {api_mode}")
 
@@ -610,8 +844,11 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                         "prompt": prompt,
                         "stream": request_data.get("stream", False),
                     }
-                    result = forward_request(
-                        endpoint, "/api/generate", json.dumps(ollama_data)
+                    result, status_code = forward_request(
+                        endpoint,
+                        "/api/generate",
+                        json.dumps(ollama_data),
+                        provider_name="ollama",
                     )
 
                     # Check for error in response
@@ -687,8 +924,11 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                         "stream": request_data.get("stream", False),
                     }
 
-                    result = forward_request(
-                        endpoint, "/api/chat", json.dumps(ollama_data)
+                    result, _ = forward_request(
+                        endpoint,
+                        "/api/chat",
+                        json.dumps(ollama_data),
+                        provider_name="ollama",
                     )
 
                     # Check for error in response
@@ -762,9 +1002,14 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                             continue
                         self.send_json({"error": str(e), "detail": result[:500]}, 500)
                         return
-            else:
+            elif provider == "docker-model-runner":
                 # Docker Model Runner - use OpenAI format
-                result = forward_request(endpoint, "/v1/chat/completions", body)
+                result, status_code = forward_request(
+                    endpoint,
+                    "/v1/chat/completions",
+                    body,
+                    provider_name="docker-model-runner",
+                )
 
                 # Check for error
                 try:
@@ -814,7 +1059,12 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                 log(f"[{request_id}] Response sent to client")
                 return
             log(f"[{request_id}] Forwarding to DMR")
-            result = forward_request(endpoint, "/v1/chat/completions", body)
+            result, _ = forward_request(
+                endpoint,
+                "/v1/chat/completions",
+                body,
+                provider_name="docker-model-runner",
+            )
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

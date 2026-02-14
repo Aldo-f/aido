@@ -26,6 +26,7 @@ DEBUG_MODE=false
 PROVIDER_MODE="auto"
 PROXY_MODE=""
 PROXY_PORT=""
+OPENCODE_MODE=""
 SPECIFIC_MODEL=""
 SPECIFIC_TYPE=""
 LIST_MODELS=false
@@ -218,14 +219,34 @@ init_data_dir() {
         cat > "$DATA_DIR/config.json" << 'EOFCONFIG'
 {
   "providers": {
-    "ollama": {"enabled": true, "priority": 1, "endpoint": "http://localhost:11434"},
-    "docker-model-runner": {"enabled": true, "priority": 2, "endpoint": "http://localhost:12434"},
-    "cloud": {"enabled": false, "priority": 3, "endpoint": "https://api.openai.com"}
+    "ollama": {
+      "enabled": true,
+      "endpoint": "http://localhost:11434",
+      "keys": []
+    },
+    "docker-model-runner": {
+      "enabled": true,
+      "endpoint": "http://localhost:12434",
+      "keys": []
+    },
+    "opencode-zen": {
+      "enabled": true,
+      "endpoint": "https://api.opencode.ai",
+      "keys": []
+    },
+    "gemini": {
+      "enabled": true,
+      "endpoint": "https://generativelanguage.googleapis.com",
+      "keys": []
+    },
+    "cloud": {
+      "enabled": false,
+      "endpoint": "https://api.openai.com",
+      "keys": []
+    }
   },
-  "selection": {"default_mode": "auto", "fallback_enabled": true},
-  "sessions": {"max_sessions": 50, "retention_days": 30},
-  "cache": {"models_cache_hours": 168},
-  "ui": {"debug_mode": false, "show_timing": true}
+  "selection": {"default_mode": "auto"},
+  "ui": {"debug_mode": false}
 }
 EOFCONFIG
     fi
@@ -325,6 +346,493 @@ uninstall_aido() {
         rm -rf "$DATA_DIR"
         echo "Data removed."
     fi
+}
+
+# ==================== OPENCODE INTEGRATION ====================
+
+generate_opencode_config() {
+    local output_file="${1:-opencode.jsonc}"
+    local proxy_port="${2:-11999}"
+    
+    cat > "$output_file" << EOF
+{
+  // AIDO - OpenCode Configuration
+  // Run "aido proxy start" before using OpenCode
+  "\$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "aido": {
+      "name": "AIDO",
+      "options": {
+        "baseURL": "http://localhost:${proxy_port}",
+        "apiKey": "dummy" // Not required for local proxy
+      }
+    }
+  },
+  "model": "aido"
+}
+EOF
+    
+    echo -e "${GREEN}Generated: $output_file${NC}"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Start the proxy: ./aido.sh serve"
+    echo "  2. Move config to OpenCode: mv $output_file ~/.config/opencode/"
+    echo "  3. Restart OpenCode"
+    echo ""
+    echo "Available models will be automatically detected from your configured providers."
+}
+
+open_url() {
+    local url="$1"
+    echo "Opening: $url"
+    if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$url"
+    elif command -v open >/dev/null 2>&1; then
+        open "$url"
+    else
+        echo "Please visit: $url"
+    fi
+}
+
+show_auth_providers() {
+    echo -e "${CYAN}AIDO Auth Providers${NC}"
+    echo "====================="
+    echo ""
+    printf "  %-12s %-20s %s\n" "zen" "OpenCode Zen" "https://opencode.ai/auth"
+    printf "  %-12s %-20s %s\n" "gemini" "Google Gemini" "https://aistudio.google.com/app/apikey"
+    printf "  %-12s %-20s %s\n" "openai" "OpenAI" "https://platform.openai.com/settings/organization/api-keys"
+    echo ""
+    echo "Usage: aido auth <provider>"
+}
+
+handle_key_command() {
+    local action="${2:-list}"
+    local provider="${3:-}"
+    local key="${4:-}"
+    local key_name="${5:-}"
+    
+    init_data_dir
+    load_config
+    
+    case "$action" in
+        list)
+            show_keys
+            ;;
+        add)
+            if [ -z "$provider" ] || [ -z "$key" ]; then
+                echo "Usage: aido key add <provider> <key> [name]"
+                echo ""
+                echo "Providers: ollama, docker-model-runner, opencode-zen, gemini, cloud"
+                exit 1
+            fi
+            add_key "$provider" "$key" "$key_name"
+            ;;
+        delete)
+            if [ -z "$provider" ] || [ -z "$key" ]; then
+                echo "Usage: aido key delete <provider> <index>"
+                echo ""
+                show_keys
+                exit 1
+            fi
+            delete_key "$provider" "$key"
+            ;;
+        delete-all)
+            if [ -z "$provider" ]; then
+                echo "Usage: aido key delete-all <provider>"
+                exit 1
+            fi
+            delete_all_keys "$provider"
+            ;;
+        test)
+            if [ -z "$provider" ]; then
+                echo "Usage: aido key test <provider>"
+                exit 1
+            fi
+            test_keys "$provider"
+            ;;
+        *)
+            echo "Usage: aido key [list|add|delete|delete-all|test]"
+            exit 1
+            ;;
+    esac
+}
+
+show_keys() {
+    echo -e "${CYAN}API Keys${NC}"
+    echo "========"
+    echo ""
+    
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    
+    local providers
+    providers=$(echo "$config" | jq -r '.providers | keys[]')
+    
+    for prov in $providers; do
+        local keys
+        keys=$(echo "$config" | jq -r ".providers.\"$prov\".keys // []")
+        local key_count
+        key_count=$(echo "$keys" | jq 'length')
+        
+        printf "${GREEN}%s${NC}: " "$prov"
+        if [ "$key_count" -eq 0 ]; then
+            echo "no keys"
+        else
+            echo "$key_count key(s)"
+            local idx=0
+            for key_entry in $(echo "$keys" | jq -r '.[] | @base64'); do
+                local key_obj
+                key_obj=$(echo "$key_entry" | base64 -d)
+                local key_value
+                key_value=$(echo "$key_obj" | jq -r '.key')
+                local key_name
+                key_name=$(echo "$key_obj" | jq -r '.name // "default"')
+                local masked
+                masked="**${key_value: -4}"
+                printf "  [%d] %s (%s)\n" "$idx" "$masked" "$key_name"
+                idx=$((idx + 1))
+            done
+        fi
+        echo ""
+    done
+}
+
+add_key() {
+    local provider="$1"
+    local key="$2"
+    local name="${3:-default}"
+    
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    
+    local existing_keys
+    existing_keys=$(echo "$config" | jq ".providers.\"$provider\".keys // []")
+    
+    local new_key
+    new_key=$(jq -n --arg key "$key" --arg name "$name" '{key: $key, name: $name}')
+    
+    local updated_keys
+    updated_keys=$(echo "$existing_keys" | jq ". + [$new_key]")
+    
+    config=$(echo "$config" | jq ".providers.\"$provider\".keys = $updated_keys")
+    
+    echo "$config" > "$DATA_DIR/config.json"
+    
+    echo -e "${GREEN}Added key for $provider${NC}"
+}
+
+delete_key() {
+    local provider="$1"
+    local index="$2"
+    
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    
+    local keys
+    keys=$(echo "$config" | jq ".providers.\"$provider\".keys // []")
+    local count
+    count=$(echo "$keys" | jq 'length')
+    
+    if [ "$index" -ge "$count" ]; then
+        echo -e "${RED}Invalid index $index (provider has $count keys)${NC}"
+        exit 1
+    fi
+    
+    local updated_keys
+    updated_keys=$(echo "$keys" | jq "del(.[$index])")
+    
+    config=$(echo "$config" | jq ".providers.\"$provider\".keys = $updated_keys")
+    
+    echo "$config" > "$DATA_DIR/config.json"
+    
+    echo -e "${GREEN}Deleted key $index from $provider${NC}"
+}
+
+delete_all_keys() {
+    local provider="$1"
+    
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    
+    config=$(echo "$config" | jq ".providers.\"$provider\".keys = []")
+    
+    echo "$config" > "$DATA_DIR/config.json"
+    
+    echo -e "${GREEN}Deleted all keys from $provider${NC}"
+}
+
+test_keys() {
+    local provider="$1"
+    
+    echo -e "${CYAN}Testing keys for $provider...${NC}"
+    echo ""
+    
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    
+    local keys
+    keys=$(echo "$config" | jq -r ".providers.\"$provider\".keys // []")
+    local count
+    count=$(echo "$keys" | jq 'length')
+    
+    if [ "$count" -eq 0 ]; then
+        echo -e "${RED}No keys configured for $provider${NC}"
+        exit 1
+    fi
+    
+    local idx=0
+    for key_entry in $(echo "$keys" | jq -r '.[] | @base64'); do
+        local key_obj
+        key_obj=$(echo "$key_entry" | base64 -d)
+        local key_value
+        key_value=$(echo "$key_obj" | jq -r '.key')
+        local key_name
+        key_name=$(echo "$key_obj" | jq -r '.name // "default"')
+        
+        printf "[%d] Testing %s... " "$idx" "$key_name"
+        
+        local result
+        result=$(test_provider_key "$provider" "$key_value")
+        
+        if [ "$result" = "ok" ]; then
+            echo -e "${GREEN}OK${NC}"
+        else
+            echo -e "${RED}FAILED: $result${NC}"
+        fi
+        
+        idx=$((idx + 1))
+    done
+}
+
+test_provider_key() {
+    local provider="$1"
+    local key="$2"
+    
+    case "$provider" in
+        opencode-zen)
+            curl -s -w "%{http_code}" -o /dev/null \
+                -H "Authorization: Bearer $key" \
+                "https://api.opencode.ai/v1/models" 2>/dev/null
+            ;;
+        gemini)
+            curl -s -w "%{http_code}" -o /dev/null \
+                "https://generativelanguage.googleapis.com/v1/models?key=$key" 2>/dev/null
+            ;;
+        cloud)
+            curl -s -w "%{http_code}" -o /dev/null \
+                -H "Authorization: Bearer $key" \
+                "https://api.openai.com/v1/models" 2>/dev/null
+            ;;
+        *)
+            echo "unsupported"
+            ;;
+    esac
+}
+
+run_init() {
+    echo -e "${CYAN}AIDO Init${NC}"
+    echo "========="
+    echo ""
+    
+    init_data_dir
+    load_config
+    
+    echo -e "${CYAN}Checking providers...${NC}"
+    echo ""
+    
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    
+    local providers
+    providers=$(echo "$config" | jq -r '.providers | keys[]')
+    
+    for prov in $providers; do
+        local enabled
+        enabled=$(echo "$config" | jq -r ".providers.\"$prov\".enabled")
+        local endpoint
+        endpoint=$(echo "$config" | jq -r ".providers.\"$prov\".endpoint")
+        local keys
+        keys=$(echo "$config" | jq -r ".providers.\"$prov\".keys // []")
+        local key_count
+        key_count=$(echo "$keys" | jq 'length')
+        
+        printf "%-24s " "$prov:"
+        
+        if [ "$enabled" != "true" ]; then
+            echo -e "${YELLOW}Disabled${NC}"
+            continue
+        fi
+        
+        case "$prov" in
+            ollama|docker-model-runner)
+                if curl -f -s --connect-timeout 2 "$endpoint/api/tags" >/dev/null 2>&1; then
+                    echo -e "${GREEN}Running${NC}"
+                else
+                    echo -e "${RED}Not running${NC}"
+                fi
+                ;;
+            opencode-zen|gemini|cloud)
+                if [ "$key_count" -gt 0 ]; then
+                    echo -e "${GREEN}Ready ($key_count key(s))${NC}"
+                else
+                    echo -e "${YELLOW}No keys - run 'aido auth $prov'${NC}"
+                fi
+                ;;
+            *)
+                echo -e "${YELLOW}Unknown${NC}"
+                ;;
+        esac
+    done
+    
+    echo ""
+    echo "Use 'aido status' for detailed info"
+    echo "Use 'aido key add <provider> <key>' to add API keys"
+    echo "Use 'aido auth <provider>' to open auth page"
+}
+
+handle_pull_command() {
+    local model="${2:-}"
+    
+    if [ -z "$model" ]; then
+        echo "Usage: aido pull [model]"
+        echo ""
+        echo "Download models from providers"
+        echo ""
+        echo "Examples:"
+        echo "  aido pull llama3.2:latest    # Download from Ollama"
+        echo "  aido pull --all             # Download all recommended models"
+        exit 1
+    fi
+    
+    if [ "$model" = "--all" ]; then
+        install_recommended_models
+        exit $?
+    fi
+    
+    install_model "$model"
+}
+
+handle_run_command() {
+    local query="$*"
+    local continue_session=false
+    local session_id=""
+    
+    for arg in "$@"; do
+        case "$arg" in
+            -c|--continue)
+                continue_session=true
+                ;;
+            -s|--session)
+                session_id="$arg"
+                ;;
+        esac
+    done
+    
+    if [ "$continue_session" = true ] || [ -n "$session_id" ]; then
+        echo "Session continue not yet implemented"
+    fi
+    
+    if [ -z "$query" ]; then
+        INTERACTIVE_MODE=true
+    else
+        QUERY="$query"
+    fi
+}
+
+handle_session_command() {
+    local action="${2:-list}"
+    local session_name="${3:-}"
+    
+    init_data_dir
+    
+    case "$action" in
+        list)
+            list_sessions
+            ;;
+        new)
+            if [ -z "$session_name" ]; then
+                echo "Usage: aido session new <name>"
+                exit 1
+            fi
+            NEW_SESSION="$session_name"
+            echo "Created session: $session_name"
+            ;;
+        delete)
+            if [ -z "$session_name" ]; then
+                echo "Usage: aido session delete <name>"
+                exit 1
+            fi
+            delete_session "$session_name"
+            ;;
+        *)
+            echo "Usage: aido session [list|new|delete]"
+            exit 1
+            ;;
+    esac
+}
+
+auth_zen() {
+    open_url "https://opencode.ai/auth"
+}
+
+connect_opencode() {
+    local config_dir="${HOME}/.config/opencode"
+    local config_file="$config_dir/opencode.jsonc"
+    
+    echo -e "${CYAN}Connecting to OpenCode...${NC}"
+    echo ""
+    
+    # Create config directory if needed
+    if [ ! -d "$config_dir" ]; then
+        mkdir -p "$config_dir"
+    fi
+    
+    # Generate aido provider config as jq-parseable single line
+    local aido_config
+    aido_config='{"aido":{"name":"AIDO","options":{"baseURL":"http://localhost:11999","apiKey":"dummy"}}}'
+    
+    # Merge with existing config or create new
+    if [ -f "$config_file" ]; then
+        echo "Updating existing OpenCode config..."
+        
+        # Read existing config and merge
+        local existing_config
+        existing_config=$(cat "$config_file")
+        
+        # Use jq to merge (add aido provider to existing providers)
+        local merged
+        merged=$(echo "$existing_config" | jq --argjson aido "$aido_config" '
+            if has("provider") then
+                .provider += $aido
+            else
+                . + {provider: $aido}
+            end
+        ')
+        
+        echo "$merged" > "$config_file"
+    else
+        echo "Creating new OpenCode config..."
+        cat > "$config_file" << EOF
+{
+  "provider": $aido_config,
+  "model": "auto"
+}
+EOF
+    fi
+    
+    echo -e "${GREEN}OpenCode configured successfully!${NC}"
+    echo ""
+    echo "Config written to: $config_file"
+    echo ""
+    echo "To use AIDO in OpenCode:"
+    echo "  1. Restart OpenCode"
+    echo "  2. Run 'aido serve' to start the proxy"
+    echo ""
+    echo "To add Zen API keys to AIDO (so AIDO can use Zen models):"
+    echo "  aido auth zen"
+    echo ""
+    echo "Then add the key with:"
+    echo "  aido key add opencode-zen <your-api-key>"
 }
 
 # ==================== QUERY ANALYSIS ====================
@@ -785,6 +1293,10 @@ parse_arguments() {
                 PROXY_PORT="$2"
                 shift 2
                 ;;
+            --version|-v)
+                echo "AIDO version 1.0.0"
+                exit 0
+                ;;
             --help|-h) show_help; exit 0 ;;
             -*) error "Unknown: $1"; show_help; exit 1 ;;
             *) QUERY="$*"; break ;;
@@ -801,32 +1313,38 @@ show_help() {
     echo "  --debug, -d              Show debug info"
     echo "  --install                Install globally"
     echo "  --uninstall              Uninstall"
-    echo "  --auto                  Auto-select (default)"
-    echo "  --provider, -p <mode>   Provider mode (ollama/dmr/cloud)"
-    echo "  --model, -m <model>      Specific model"
-    echo "  --list, -l               List models"
-    echo "  --status, -s             Show status"
+    echo "  --version, -v           Show version"
     echo "  --config                 Show config"
-    echo "  --interactive, -i        Interactive mode"
-    echo "  --list-providers         List providers"
     echo ""
-    echo "Proxy Commands:"
-    echo "  aido proxy start         Start proxy server"
-    echo "  aido proxy stop          Stop proxy server"
-    echo "  aido proxy status        Check proxy status"
+    echo "Commands:"
+    echo "  aido serve [port]        Start proxy server"
+    echo "  aido stop                Stop proxy server"
+    echo "  aido status              Show status"
+    echo "  aido list                List models"
+    echo "  aido providers           List providers"
+    echo "  aido run [query]         Run query or interactive mode"
+    echo "  aido pull [model]        Download model"
+    echo "  aido session [cmd]       Manage sessions"
     echo ""
-    echo "Models Commands:"
-    echo "  aido models list         Show installable models"
-    echo "  aido models install      Install recommended models"
-    echo "  aido models install <m>  Install specific model"
+    echo "Configuration:"
+    echo "  aido init                Initialize and check providers"
+    echo "  aido connect opencode    Configure OpenCode to use AIDO provider"
+    echo "  aido auth [provider]     Open auth page (zen|gemini|openai)"
+    echo "  aido key [cmd]           Manage API keys"
+    echo ""
+    echo "Legacy (backward compatible):"
+    echo "  aido proxy start         -> aido serve"
+    echo "  aido --list              -> aido list"
+    echo "  aido models install      -> aido pull"
+    echo "  aido opencode connect    -> aido connect opencode"
     echo ""
     echo "Examples:"
-    echo "  aido 'Hello'                   # Auto mode"
-    echo "  aido -p ollama 'Hello'         # Use Ollama"
-    echo "  aido -p dmr 'Hello'            # Use Docker Model Runner"
-    echo "  aido proxy start               # Start proxy on port 11999"
-    echo "  aido proxy start --port 8080   # Start on custom port"
-    echo "  aido models install            # Install recommended models"
+    echo "  aido run 'Hello'             # Query"
+    echo "  aido serve                   # Start proxy"
+    echo "  aido connect opencode        # Configure OpenCode"
+    echo "  aido auth zen                # Open OpenCode Zen auth"
+    echo "  aido key add gemini <key>    # Add Gemini key"
+    echo "  aido key list                # List all keys"
 }
 
 show_status() {
@@ -903,6 +1421,141 @@ main() {
                 exit 1
                 ;;
         esac
+    fi
+    
+    # Check for opencode subcommand
+    if [ "$1" = "opencode" ]; then
+        OPENCODE_MODE="${2:-config}"
+        
+        case "$OPENCODE_MODE" in
+            config)
+                generate_opencode_config
+                exit $?
+                ;;
+            connect)
+                opencode_connect
+                exit $?
+                ;;
+            *)
+                echo "Usage: aido opencode [config|connect]"
+                echo ""
+                echo "  config   Generate opencode.jsonc to use aido as provider"
+                echo "  connect  Open OpenCode Zen auth page"
+                exit 1
+                ;;
+        esac
+    fi
+    
+    # Check for connect subcommand
+    if [ "$1" = "connect" ]; then
+        local connect_target="${2:-}"
+        
+        case "$connect_target" in
+            opencode|zen|"")
+                connect_opencode
+                exit $?
+                ;;
+            *)
+                echo "Usage: aido connect [opencode]"
+                echo ""
+                echo "  opencode  Configure OpenCode to use AIDO provider"
+                exit 1
+                ;;
+        esac
+    fi
+    
+    # Check for auth subcommand
+    if [ "$1" = "auth" ]; then
+        auth_provider="${2:-}"
+        
+        case "$auth_provider" in
+            zen)
+                open_url "https://opencode.ai/auth"
+                exit $?
+                ;;
+            gemini)
+                open_url "https://aistudio.google.com/app/apikey"
+                exit $?
+                ;;
+            openai)
+                open_url "https://platform.openai.com/settings/organization/api-keys"
+                exit $?
+                ;;
+            "")
+                show_auth_providers
+                exit $?
+                ;;
+            *)
+                echo "Usage: aido auth <provider>"
+                echo ""
+                show_auth_providers
+                exit 1
+                ;;
+        esac
+    fi
+    
+    # Check for key subcommand
+    if [ "$1" = "key" ]; then
+        handle_key_command "$@"
+        exit $?
+    fi
+    
+    # Check for init subcommand
+    if [ "$1" = "init" ]; then
+        run_init "$@"
+        exit $?
+    fi
+    
+    # Check for serve subcommand
+    if [ "$1" = "serve" ]; then
+        local port="${2:-11999}"
+        proxy_start "$port"
+        exit $?
+    fi
+    
+    # Check for stop subcommand
+    if [ "$1" = "stop" ]; then
+        proxy_stop
+        exit $?
+    fi
+    
+    # Check for status subcommand (standalone)
+    if [ "$1" = "status" ]; then
+        if [ -z "${2:-}" ]; then
+            show_status
+            exit $?
+        fi
+    fi
+    
+    # Check for list subcommand
+    if [ "$1" = "list" ]; then
+        get_all_available_models | jq -r '.[] | "  \(.name) [\(.provider)]"'
+        exit $?
+    fi
+    
+    # Check for providers subcommand
+    if [ "$1" = "providers" ]; then
+        show_providers
+        exit $?
+    fi
+    
+    # Check for pull subcommand
+    if [ "$1" = "pull" ]; then
+        handle_pull_command "$@"
+        exit $?
+    fi
+    
+    # Check for run subcommand
+    if [ "$1" = "run" ]; then
+        shift
+        handle_run_command "$@"
+        exit $?
+    fi
+    
+    # Check for session subcommand
+    if [ "$1" = "session" ]; then
+        handle_session_command "$@"
+        exit $?
     fi
     
     for arg in "$@"; do
