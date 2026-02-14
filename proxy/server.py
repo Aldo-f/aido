@@ -178,7 +178,19 @@ def analyze_prompt(prompt):
 
     if any(
         w in prompt_lower
-        for w in ["code", "programming", "debug", "fix", "function", "script"]
+        for w in [
+            "code",
+            "programming",
+            "debug",
+            "fix",
+            "function",
+            "script",
+            "write",
+            "create",
+            "implement",
+            "build",
+            "hello world",
+        ]
     ):
         capabilities.append("coding")
 
@@ -199,11 +211,26 @@ def analyze_prompt(prompt):
     return capabilities
 
 
+# Classification cache
+CLASSIFICATION_CACHE = {}
+CLASSIFICATION_CACHE_TTL = 300  # 5 minutes
+
+
 def classify_with_model(prompt, model="llama3.2:latest"):
     """Use a lightweight model to classify the query type
 
     Returns: coding, general, vision, reasoning
     """
+    # Check cache first
+    cache_key = f"model:{hash(prompt)}"
+    if cache_key in CLASSIFICATION_CACHE:
+        cached_time, cached_result = CLASSIFICATION_CACHE[cache_key]
+        if (
+            datetime.datetime.now() - cached_time
+        ).total_seconds() < CLASSIFICATION_CACHE_TTL:
+            log(f"Using cached model classification: {cached_result}")
+            return cached_result
+
     classification_prompt = f"""Classify this query. Reply with only ONE word:
 - coding: for programming, debugging, code questions
 - vision: for image, visual, diagram questions  
@@ -234,20 +261,51 @@ Reply with only one word:"""
         classification = content.split()[0] if content else "general"
 
         if classification in ["coding", "vision", "reasoning", "general"]:
+            CLASSIFICATION_CACHE[cache_key] = (datetime.datetime.now(), classification)
             return classification
 
         if "code" in content or "program" in content:
-            return "coding"
-        if "image" in content or "visual" in content:
-            return "vision"
-        if "think" in content or "analyz" in content or "reason" in content:
-            return "reasoning"
+            result = "coding"
+        elif "image" in content or "visual" in content:
+            result = "vision"
+        elif "think" in content or "analyz" in content or "reason" in content:
+            result = "reasoning"
+        else:
+            result = "general"
 
-        return "general"
+        CLASSIFICATION_CACHE[cache_key] = (datetime.datetime.now(), result)
+        return result
 
     except Exception as e:
         log(f"Model classification failed: {e}", "WARN")
         return "general"
+
+
+def classify_query(prompt):
+    """Classify query - uses model classifier only when keywords detect 'general'
+
+    This is the smart hybrid approach:
+    - Keywords are fast, use them first
+    - Model classifier only for ambiguous cases (general)
+    """
+    keywords_result = analyze_prompt(prompt)
+
+    # If keywords detected something specific, use it
+    if keywords_result and keywords_result[0] != "general":
+        return {
+            "method": "keywords",
+            "capability": keywords_result[0],
+            "all": keywords_result,
+        }
+
+    # Keywords returned "general" - use model classifier for better detection
+    model_result = classify_with_model(prompt)
+
+    return {
+        "method": "model",
+        "capability": model_result,
+        "keywords_fallback": keywords_result,
+    }
 
 
 def select_model(prompt, provider_hint=None):
