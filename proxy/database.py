@@ -75,6 +75,17 @@ def init_db():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS key_models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            key_hash TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(provider, key_hash, model_id)
+        )
+    """)
+
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_queries_timestamp ON queries(timestamp)
     """)
 
@@ -337,6 +348,83 @@ def get_recent_queries(limit: int = 10):
     conn.close()
 
     return [dict(row) for row in rows]
+
+
+def save_key_models(provider: str, key_hash: str, model_ids: list):
+    """Save available models for a key"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    timestamp = datetime.now().isoformat()
+
+    for model_id in model_ids:
+        try:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO key_models (provider, key_hash, model_id, created_at)
+                VALUES (?, ?, ?, ?)
+            """,
+                (provider, key_hash, model_id, timestamp),
+            )
+        except:
+            pass
+
+    conn.commit()
+    conn.close()
+
+
+def get_key_models(provider: str, key_hash: str) -> list:
+    """Get available models for a specific key"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT model_id FROM key_models WHERE provider = ? AND key_hash = ?
+    """,
+        (provider, key_hash),
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
+
+
+def get_provider_models(provider: str) -> dict:
+    """Get all models grouped by key for a provider"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT key_hash, model_id FROM key_models WHERE provider = ?
+    """,
+        (provider,),
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    result = {}
+    for key_hash, model_id in rows:
+        if key_hash not in result:
+            result[key_hash] = []
+        result[key_hash].append(model_id)
+
+    return result
+
+
+def clear_key_models(provider: str, key_hash: str):
+    """Clear models for a removed key"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "DELETE FROM key_models WHERE provider = ? AND key_hash = ?",
+        (provider, key_hash),
+    )
+
+    conn.commit()
+    conn.close()
 
 
 def summarize_query(query_text: str) -> str:

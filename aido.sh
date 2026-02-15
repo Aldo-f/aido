@@ -196,6 +196,8 @@ detect_providers() {
     # Detect OpenCode Zen (cloud provider with keys)
     local zen_enabled
     zen_enabled=$(echo "$config" | jq -r '.providers."opencode-zen".enabled // true')
+    local zen_endpoint
+    zen_endpoint=$(echo "$config" | jq -r '.providers."opencode-zen".endpoint // "'"$OPENCODE_ZEN_ENDPOINT"'"')
     local zen_keys
     zen_keys=$(echo "$config" | jq -r '.providers."opencode-zen".keys // []')
     local zen_key_count
@@ -205,15 +207,17 @@ detect_providers() {
         providers_json=$(echo "$providers_json" | jq \
             --argjson models "$OPENCODE_ZEN_MODELS" \
             --argjson keys "$zen_keys" \
-            '. + {"opencode-zen": {"enabled": true, "priority": 1, "endpoint": "'"$OPENCODE_ZEN_ENDPOINT"'", "models": $models, "status": "running", "keys": $keys}}')
+            '. + {"opencode-zen": {"enabled": true, "priority": 1, "endpoint": "'"$zen_endpoint"'", "models": $models, "status": "running", "keys": $keys}}')
     else
         providers_json=$(echo "$providers_json" | jq \
-            '. + {"opencode-zen": {"enabled": false, "priority": 1, "endpoint": "'"$OPENCODE_ZEN_ENDPOINT"'", "models": [], "status": "no keys", "keys": []}}')
+            '. + {"opencode-zen": {"enabled": false, "priority": 1, "endpoint": "'"$zen_endpoint"'", "models": [], "status": "no keys", "keys": []}}')
     fi
     
     # Detect Gemini (cloud provider with keys)
     local gemini_enabled
     gemini_enabled=$(echo "$config" | jq -r '.providers.gemini.enabled // true')
+    local gemini_endpoint
+    gemini_endpoint=$(echo "$config" | jq -r '.providers.gemini.endpoint // "'"$GEMINI_ENDPOINT"'"')
     local gemini_keys
     gemini_keys=$(echo "$config" | jq -r '.providers.gemini.keys // []')
     local gemini_key_count
@@ -489,9 +493,19 @@ handle_key_command() {
                 exit 1
             fi
             test_keys "$provider"
+            # Also refresh models after test
+            refresh_key_models "$provider"
+            ;;
+        refresh)
+            if [ -z "$provider" ]; then
+                echo "Refreshing models for all providers..."
+                refresh_all_key_models
+            else
+                refresh_key_models "$provider"
+            fi
             ;;
         *)
-            echo "Usage: aido key [list|add|delete|delete-all|test]"
+            echo "Usage: aido key [list|add|delete|delete-all|test|refresh]"
             exit 1
             ;;
     esac
@@ -566,6 +580,12 @@ add_key() {
     echo "$config" > "$DATA_DIR/config.json"
     
     echo -e "${GREEN}Added key for $provider${NC}"
+    
+    # Auto-refresh models for this key
+    if [ "$provider" = "opencode-zen" ] || [ "$provider" = "gemini" ] || [ "$provider" = "cloud" ]; then
+        echo -e "${CYAN}Refreshing models for new key...${NC}"
+        refresh_key_models "$provider"
+    fi
 }
 
 delete_key() {
@@ -734,6 +754,114 @@ get_first_provider_key() {
     fi
     
     echo "$first_key"
+}
+
+refresh_key_models() {
+    local provider="$1"
+    local config
+    config=$(cat "$DATA_DIR/config.json")
+    
+    local keys
+    keys=$(echo "$config" | jq -r ".providers.\"$provider\".keys // []")
+    local key_count
+    key_count=$(echo "$keys" | jq 'length')
+    
+    if [ "$key_count" -eq 0 ]; then
+        echo -e "${YELLOW}No keys for $provider${NC}"
+        return 1
+    fi
+    
+    local endpoint
+    case "$provider" in
+        opencode-zen)
+            endpoint=$(echo "$config" | jq -r ".providers.\"$provider\".endpoint // \""$OPENCODE_ZEN_ENDPOINT"\"")
+            ;;
+        gemini)
+            endpoint=$(echo "$config" | jq -r ".providers.\"$provider\".endpoint // \""$GEMINI_ENDPOINT"\"")
+            ;;
+        cloud)
+            endpoint=$(echo "$config" | jq -r ".providers.\"$provider\".endpoint // \""$CLOUD_ENDPOINT"\"")
+            ;;
+        *)
+            echo -e "${RED}Unsupported provider: $provider${NC}"
+            return 1
+            ;;
+    esac
+    
+    echo -e "${CYAN}Refreshing models for $provider...${NC}"
+    
+    local idx=0
+    for key_entry in $(echo "$keys" | jq -r '.[] | @base64'); do
+        local key_obj
+        key_obj=$(echo "$key_entry" | base64 -d)
+        local key_value
+        key_value=$(echo "$key_obj" | jq -r '.key')
+        local key_name
+        key_name=$(echo "$key_obj" | jq -r '.name // "default"')
+        
+        # Generate key hash for identification
+        local key_hash
+        key_hash=$(echo "$key_value" | cut -c1-8)
+        
+        printf "[%d] Fetching models... " "$idx"
+        
+        local models_json
+        local response_code
+        
+        case "$provider" in
+            opencode-zen)
+                response_code=$(curl -s -w "%{http_code}" -o /tmp/models_$$ \
+                    -H "Authorization: Bearer $key_value" \
+                    "$endpoint/v1/models" 2>/dev/null)
+                ;;
+            gemini)
+                response_code=$(curl -s -w "%{http_code}" -o /tmp/models_$$ \
+                    "$endpoint/models?key=$key_value" 2>/dev/null)
+                ;;
+            cloud)
+                response_code=$(curl -s -w "%{http_code}" -o /tmp/models_$$ \
+                    -H "Authorization: Bearer $key_value" \
+                    "$endpoint/v1/models" 2>/dev/null)
+                ;;
+        esac
+        
+        if [ "$response_code" = "200" ]; then
+            # Extract model IDs
+            local model_ids
+            model_ids=$(cat /tmp/models_$$ | jq -r '.data[].id' 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+            
+            if [ -n "$model_ids" ]; then
+                # Save to database
+                python3 -c "
+import sys
+sys.path.insert(0, '$HOME/.aido-data/proxy')
+from database import save_key_models
+save_key_models('$provider', '$key_hash', [$(echo "$model_ids" | tr ',' '\n' | sed "s/^/'/g" | sed "s/$/'/g" | tr '\n' ',')])
+" 2>/dev/null || true
+                
+                echo -e "${GREEN}OK ($(echo "$model_ids" | tr ',' '\n' | wc -l) models)${NC}"
+            else
+                echo -e "${YELLOW}No models found${NC}"
+            fi
+        else
+            echo -e "${RED}Failed (HTTP $response_code)${NC}"
+        fi
+        
+        rm -f /tmp/models_$$
+        idx=$((idx + 1))
+    done
+    
+    echo -e "${GREEN}Done!${NC}"
+}
+
+refresh_all_key_models() {
+    echo -e "${CYAN}Refreshing models for all providers...${NC}"
+    
+    refresh_key_models "opencode-zen"
+    refresh_key_models "gemini"
+    refresh_key_models "cloud"
+    
+    echo -e "${GREEN}All providers refreshed!${NC}"
 }
 
 run_init() {

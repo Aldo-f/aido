@@ -299,12 +299,31 @@ def detect_providers():
 
     # Check OpenCode Zen
     provider_config = providers.get("opencode-zen", {})
+    zen_endpoint = provider_config.get("endpoint") or OPENCODE_ZEN_ENDPOINT
     if provider_config.get("enabled", True):
         keys = get_provider_keys("opencode-zen")
         if keys:
+            # Try to get models from database first
+            stored_models = []
+            try:
+                stored_models = database.get_provider_models("opencode-zen")
+            except:
+                pass
+
+            # Use stored models from first available key, or fallback to default
+            models = OPENCODE_ZEN_MODELS
+            if stored_models:
+                # Get models from first key
+                first_key_hash = keys[0][:8]  # Use first 8 chars of key as hash
+                if first_key_hash in stored_models:
+                    models = stored_models[first_key_hash]
+                    log(
+                        f"OpenCode Zen: using stored models from database: {len(models)} models"
+                    )
+
             available["opencode-zen"] = {
-                "endpoint": OPENCODE_ZEN_ENDPOINT,
-                "models": OPENCODE_ZEN_MODELS,
+                "endpoint": zen_endpoint,
+                "models": models,
                 "status": "running",
                 "keys": keys,
             }
@@ -313,23 +332,24 @@ def detect_providers():
             available["opencode-zen"] = {
                 "status": "no keys",
                 "models": [],
-                "endpoint": OPENCODE_ZEN_ENDPOINT,
+                "endpoint": zen_endpoint,
             }
             log("OpenCode Zen: no API keys configured", "WARN")
     else:
         available["opencode-zen"] = {
             "status": "disabled",
             "models": [],
-            "endpoint": OPENCODE_ZEN_ENDPOINT,
+            "endpoint": zen_endpoint,
         }
 
     # Check Google Gemini
     provider_config = providers.get("gemini", {})
+    gemini_endpoint = provider_config.get("endpoint") or GEMINI_ENDPOINT
     if provider_config.get("enabled", True):
         keys = get_provider_keys("gemini")
         if keys:
             available["gemini"] = {
-                "endpoint": GEMINI_ENDPOINT,
+                "endpoint": gemini_endpoint,
                 "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
                 "status": "running",
                 "keys": keys,
@@ -339,14 +359,14 @@ def detect_providers():
             available["gemini"] = {
                 "status": "no keys",
                 "models": [],
-                "endpoint": GEMINI_ENDPOINT,
+                "endpoint": gemini_endpoint,
             }
             log("Gemini: no API keys configured", "WARN")
     else:
         available["gemini"] = {
             "status": "disabled",
             "models": [],
-            "endpoint": GEMINI_ENDPOINT,
+            "endpoint": gemini_endpoint,
         }
 
     return available
