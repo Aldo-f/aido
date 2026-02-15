@@ -42,7 +42,24 @@ if not (DATA_DIR / "config.json").exists():
 OLLAMA_ENDPOINT = os.environ.get("OLLAMA_ENDPOINT", "http://localhost:11434")
 DMR_ENDPOINT = os.environ.get("DMR_ENDPOINT", "http://localhost:12434")
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com"
-OPENCODE_ZEN_ENDPOINT = "https://api.opencode.ai"
+OPENCODE_ZEN_ENDPOINT = "https://opencode.ai/zen"
+
+# Default models for OpenCode Zen (free models first)
+OPENCODE_ZEN_MODELS = [
+    "big-pickle",  # Free
+    "minimax-m2.5-free",  # Free
+    "kimi-k2.5-free",  # Free
+    "gpt-5-nano",  # Free
+    "gpt-5.2-codex",  # Paid
+    "gpt-5.2",  # Paid
+    "claude-sonnet-4-5",  # Paid
+    "claude-opus-4-6",  # Paid
+    "gemini-3-pro",  # Paid
+    "gemini-3-flash",  # Paid
+    "glm-5",  # Paid
+    "kimi-k2.5",  # Paid
+    "qwen3-coder",  # Paid
+]
 
 # Key rotation state
 provider_key_index = {}  # {provider_name: current_key_index}
@@ -287,7 +304,7 @@ def detect_providers():
         if keys:
             available["opencode-zen"] = {
                 "endpoint": OPENCODE_ZEN_ENDPOINT,
-                "models": ["gpt-4o", "o1", "o1-mini", "o3-mini"],  # Known Zen models
+                "models": OPENCODE_ZEN_MODELS,
                 "status": "running",
                 "keys": keys,
             }

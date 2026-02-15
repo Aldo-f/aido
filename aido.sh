@@ -155,9 +155,12 @@ list_installable_models() {
 # Provider endpoints
 OLLAMA_ENDPOINT="${OLLAMA_ENDPOINT:-http://localhost:11434}"
 DMR_ENDPOINT="${DMR_ENDPOINT:-http://localhost:12434}"
-OPENCODE_ZEN_ENDPOINT="${OPENCODE_ZEN_ENDPOINT:-https://api.opencode.ai}"
+OPENCODE_ZEN_ENDPOINT="${OPENCODE_ZEN_ENDPOINT:-https://opencode.ai/zen}"
 GEMINI_ENDPOINT="${GEMINI_ENDPOINT:-https://generativelanguage.googleapis.com/v1beta}"
 CLOUD_ENDPOINT="${CLOUD_ENDPOINT:-https://api.openai.com}"
+
+# OpenCode Zen models (free models first)
+OPENCODE_ZEN_MODELS='["big-pickle", "minimax-m2.5-free", "kimi-k2.5-free", "gpt-5-nano", "gpt-5.2-codex", "gpt-5.2", "claude-sonnet-4-5", "claude-opus-4-6", "gemini-3-pro", "gemini-3-flash", "glm-5", "kimi-k2.5", "qwen3-coder"]'
 
 # ==================== PROVIDER DETECTION ====================
 
@@ -199,9 +202,8 @@ detect_providers() {
     zen_key_count=$(echo "$zen_keys" | jq 'length')
     
     if [ "$zen_enabled" = "true" ] && [ "$zen_key_count" -gt 0 ]; then
-        local zen_models='["gpt-4o", "o1", "o1-mini", "o3-mini"]'
         providers_json=$(echo "$providers_json" | jq \
-            --argjson models "$zen_models" \
+            --argjson models "$OPENCODE_ZEN_MODELS" \
             --argjson keys "$zen_keys" \
             '. + {"opencode-zen": {"enabled": true, "priority": 1, "endpoint": "'"$OPENCODE_ZEN_ENDPOINT"'", "models": $models, "status": "running", "keys": $keys}}')
     else
@@ -656,21 +658,58 @@ test_keys() {
 test_provider_key() {
     local provider="$1"
     local key="$2"
+    local result
     
     case "$provider" in
         opencode-zen)
-            curl -s -w "%{http_code}" -o /dev/null \
+            result=$(curl -s -w "\n%{http_code}" -o /tmp/key_test_$$ \
                 -H "Authorization: Bearer $key" \
-                "https://api.opencode.ai/v1/models" 2>/dev/null
+                "$OPENCODE_ZEN_ENDPOINT/v1/models" 2>/dev/null)
+            # Check for error codes in response
+            if echo "$result" | grep -q "401\|403"; then
+                echo "Auth failed (401/403) - check key"
+            elif echo "$result" | grep -q "429"; then
+                echo "Rate limited (429) - try later"
+            elif echo "$result" | grep -q "500\|502\|503"; then
+                echo "Server error - try later"
+            elif echo "$result" | grep -q "200"; then
+                echo "ok"
+            else
+                # Check response body for error
+                if grep -q "error" /tmp/key_test_$$ 2>/dev/null; then
+                    cat /tmp/key_test_$$ | jq -r '.error.message' 2>/dev/null || echo "Error"
+                else
+                    echo "ok"
+                fi
+            fi
+            rm -f /tmp/key_test_$$
             ;;
         gemini)
-            curl -s -w "%{http_code}" -o /dev/null \
-                "https://generativelanguage.googleapis.com/v1/models?key=$key" 2>/dev/null
+            result=$(curl -s -w "%{http_code}" -o /dev/null \
+                "https://generativelanguage.googleapis.com/v1/models?key=$key" 2>/dev/null)
+            if [ "$result" = "200" ]; then
+                echo "ok"
+            elif echo "$result" | grep -q "401\|403"; then
+                echo "Auth failed - check key"
+            elif echo "$result" | grep -q "429"; then
+                echo "Rate limited"
+            else
+                echo "Error ($result)"
+            fi
             ;;
         cloud)
-            curl -s -w "%{http_code}" -o /dev/null \
+            result=$(curl -s -w "%{http_code}" -o /dev/null \
                 -H "Authorization: Bearer $key" \
-                "https://api.openai.com/v1/models" 2>/dev/null
+                "https://api.openai.com/v1/models" 2>/dev/null)
+            if [ "$result" = "200" ]; then
+                echo "ok"
+            elif echo "$result" | grep -q "401\|403"; then
+                echo "Auth failed - check key"
+            elif echo "$result" | grep -q "429"; then
+                echo "Rate limited"
+            else
+                echo "Error ($result)"
+            fi
             ;;
         *)
             echo "unsupported"
@@ -741,7 +780,17 @@ run_init() {
                 ;;
             opencode-zen|gemini|cloud)
                 if [ "$key_count" -gt 0 ]; then
-                    echo -e "${GREEN}Ready ($key_count key(s))${NC}"
+                    # Test the first key
+                    local first_key
+                    first_key=$(echo "$keys" | jq -r '.[0].key')
+                    local test_result
+                    test_result=$(test_provider_key "$prov" "$first_key" 2>/dev/null)
+                    
+                    if [ "$test_result" = "ok" ]; then
+                        echo -e "${GREEN}Ready ($key_count key(s))${NC}"
+                    else
+                        echo -e "${YELLOW}Key issue: $test_result${NC}"
+                    fi
                 else
                     echo -e "${YELLOW}No keys - run 'aido auth $prov'${NC}"
                 fi
