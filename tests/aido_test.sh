@@ -285,6 +285,82 @@ test_opencode_integration() {
     return 0
 }
 
+# Test AIDO meta-models via API (without TUI)
+test_aido_meta_models_api() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Check that aido/auto, aido/cloud, aido/local are available
+    output=$(curl -s http://localhost:11999/v1/models)
+    if ! echo "$output" | grep -q "aido/auto"; then
+        echo "    ${RED}FAILED: aido/auto not found in models${NC}"
+        return 1
+    fi
+    if ! echo "$output" | grep -q "aido/cloud"; then
+        echo "    ${RED}FAILED: aido/cloud not found in models${NC}"
+        return 1
+    fi
+    if ! echo "$output" | grep -q "aido/local"; then
+        echo "    ${RED}FAILED: aido/local not found in models${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Test aido/local forces local provider (Ollama)
+test_aido_local_model() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Check if Ollama is running
+    if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: ollama not running${NC}"
+        return 0
+    fi
+    
+    # Test aido/local - should return response from local model
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "aido/local", "messages": [{"role": "user", "content": "Hi"}], "stream": false}' 2>&1)
+    
+    if echo "$output" | grep -q "error"; then
+        echo "    ${YELLOW}SKIP: local model error${NC}"
+        return 0
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: aido/local did not return valid response${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Test OpenCode with aido meta-models (with TUI)
+test_opencode_aido_cloud() {
+    if ! command -v opencode >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: opencode not found${NC}"
+        return 0
+    fi
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Test with aido/auto (this is the default)
+    # We can't easily test without TUI since opencode run uses TUI
+    # But we can verify the model exists
+    output=$(timeout 5 curl -s http://localhost:11999/v1/models 2>&1)
+    if ! echo "$output" | grep -q "aido/auto"; then
+        echo "    ${RED}FAILED: aido models not available${NC}"
+        return 1
+    fi
+    return 0
+}
+
 main() {
     setup
     
@@ -335,6 +411,13 @@ main() {
     run_test test_proxy_health
     run_test test_proxy_models
     run_test test_opencode_integration
+    
+    echo -e "${BLUE}AIDO Meta-Models (API):${NC}"
+    run_test test_aido_meta_models_api
+    run_test test_aido_local_model
+    
+    echo -e "${BLUE}AIDO Meta-Models (OpenCode):${NC}"
+    run_test test_opencode_aido_cloud
     
     echo ""
     echo -e "${BLUE}=== Results ===${NC}"

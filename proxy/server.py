@@ -588,6 +588,62 @@ def select_model(prompt, provider_hint=None):
     return None, None, None
 
 
+def select_model_by_type(prompt, model_type="auto"):
+    """Select model based on type hint: auto, cloud, local
+
+    Args:
+        prompt: The user prompt
+        model_type: "auto", "cloud", or "local"
+
+    Returns:
+        tuple: (model_name, provider_name, endpoint)
+    """
+    log(f"Selecting model for type: {model_type}")
+    available = detect_providers()
+
+    # Determine cloud vs local providers
+    cloud_providers = []
+    local_providers = []
+
+    for name, info in available.items():
+        if info.get("status") != "running" or not info.get("models"):
+            continue
+        if info.get("keys"):  # Has API keys = cloud provider
+            cloud_providers.append((name, info))
+        else:  # No keys = local provider
+            local_providers.append((name, info))
+
+    failed_models = database.get_failed_models(min_failures=2, hours=1)
+    failed_model_names = [m["model_name"] for m in failed_models]
+
+    # Select providers based on type
+    if model_type == "cloud":
+        providers_to_try = cloud_providers
+    elif model_type == "local":
+        providers_to_try = local_providers
+    else:  # auto
+        # Use preference from config
+        preference = get_model_preference()
+        if preference == "cloud_first":
+            providers_to_try = cloud_providers + local_providers
+        elif preference == "local_first":
+            providers_to_try = local_providers + cloud_providers
+        else:  # auto
+            providers_to_try = cloud_providers if cloud_providers else local_providers
+
+    # Find first available model
+    for name, info in providers_to_try:
+        models = info["models"]
+        models = [m for m in models if m not in failed_model_names]
+        if models:
+            selected_model = models[0]
+            log(f"Selected model: {selected_model} from provider: {name}")
+            return selected_model, name, info["endpoint"]
+
+    log(f"No models available for type: {model_type}", "ERROR")
+    return None, None, None
+
+
 def get_fallback_model(current_model=None):
     """Get a fallback model (local model) when primary fails"""
     available = detect_providers()
@@ -732,7 +788,29 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
         """Send available models list"""
         available = detect_providers()
 
-        models = []
+        # Add AIDO meta-models first
+        models = [
+            {
+                "id": "aido/auto",
+                "object": "model",
+                "created": 0,
+                "owned_by": "aido",
+            },
+            {
+                "id": "aido/cloud",
+                "object": "model",
+                "created": 0,
+                "owned_by": "aido",
+            },
+            {
+                "id": "aido/local",
+                "object": "model",
+                "created": 0,
+                "owned_by": "aido",
+            },
+        ]
+
+        # Add actual provider models
         for provider_name, info in available.items():
             if info.get("status") == "running":
                 for model_name in info.get("models", []):
@@ -804,15 +882,49 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
         while True:
             # Use requested model if provided, otherwise select best model
             if requested_model and not fallback_attempted:
-                # Find provider for requested model
-                model, provider, endpoint = find_model_provider(requested_model)
-                if not model:
-                    # Model not found, fall back to auto-selection
-                    log(
-                        f"[{request_id}] Requested model '{requested_model}' not found, auto-selecting"
-                    )
-                    model, provider, endpoint = select_model(user_message)
-                    requested_model = None  # Prevent further use
+                # Handle AIDO meta-models
+                if requested_model.startswith("aido/"):
+                    model_type = requested_model.split("/")[1]
+                    if model_type in ("auto", "cloud", "local"):
+                        log(f"[{request_id}] Using AIDO meta-model: {requested_model}")
+                        model, provider, endpoint = select_model_by_type(
+                            user_message, model_type
+                        )
+                        if not model:
+                            log(
+                                f"[{request_id}] No models available for type: {model_type}",
+                                "ERROR",
+                            )
+                            self.send_json(
+                                {
+                                    "error": f"No models available for type: {model_type}"
+                                },
+                                503,
+                            )
+                            return
+                        # Remove aido/ prefix for downstream processing
+                        requested_model = None
+                    else:
+                        # Try to find the specific model (strip aido/ prefix)
+                        specific_model = requested_model[5:]  # Remove "aido/"
+                        model, provider, endpoint = find_model_provider(specific_model)
+                        if not model:
+                            # Model not found, fall back to auto-selection
+                            log(
+                                f"[{request_id}] Requested model '{requested_model}' not found, auto-selecting"
+                            )
+                            model, provider, endpoint = select_model(user_message)
+                            requested_model = None  # Prevent further use
+                else:
+                    # Find provider for requested model
+                    model, provider, endpoint = find_model_provider(requested_model)
+                    if not model:
+                        # Model not found, fall back to auto-selection
+                        log(
+                            f"[{request_id}] Requested model '{requested_model}' not found, auto-selecting"
+                        )
+                        model, provider, endpoint = select_model(user_message)
+                        requested_model = None  # Prevent further use
             elif not fallback_attempted:
                 # No requested model, auto-select
                 model, provider, endpoint = select_model(user_message)
