@@ -1055,15 +1055,12 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                 is_streaming = request_data.get("stream", False)
 
                 if is_streaming:
-                    # Streaming mode - forward SSE chunks
+                    # Streaming mode - forward SSE chunks with fallback support
                     log(f"[{request_id}] Streaming mode enabled")
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/event-stream")
-                    self.send_header("Cache-Control", "no-cache")
-                    self.send_header("Connection", "keep-alive")
-                    self.end_headers()
 
-                    chunk_id = os.urandom(4).hex()
+                    # Collect chunks first to check for errors
+                    chunks = []
+                    error_occurred = False
                     for chunk in forward_streaming_request(
                         endpoint,
                         "/v1/chat/completions",
@@ -1071,6 +1068,45 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                         api_key=api_key,
                         provider_name=provider,
                     ):
+                        chunks.append(chunk)
+                        # Check if chunk contains error
+                        try:
+                            chunk_str = chunk.decode()
+                            if '"error"' in chunk_str:
+                                error_occurred = True
+                                log(
+                                    f"[{request_id}] Error in streaming response, will try fallback"
+                                )
+                                break
+                        except:
+                            pass
+
+                    # If error occurred, try fallback
+                    if error_occurred:
+                        if not fallback_attempted:
+                            fallback_attempted = True
+                            log(
+                                f"[{request_id}] Streaming failed, trying fallback model..."
+                            )
+                            continue
+                        else:
+                            # Already tried fallback, send error
+                            self.send_response(503)
+                            self.send_header("Content-Type", "application/json")
+                            self.end_headers()
+                            self.wfile.write(
+                                json.dumps({"error": "All providers failed"}).encode()
+                            )
+                            return
+
+                    # No error, send streaming response
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.send_header("Connection", "keep-alive")
+                    self.end_headers()
+
+                    for chunk in chunks:
                         self.wfile.write(chunk)
                         self.wfile.flush()
 
@@ -1130,7 +1166,7 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                     is_streaming = request_data.get("stream", False)
 
                     if is_streaming:
-                        # Streaming mode for Ollama
+                        # Streaming mode for Ollama with fallback support
                         log(f"[{request_id}] Streaming mode enabled for Ollama")
                         ollama_data = {
                             "model": model,
@@ -1138,6 +1174,49 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                             "stream": True,
                         }
 
+                        # Collect chunks first to check for errors
+                        chunks = []
+                        error_occurred = False
+                        for chunk in forward_streaming_request(
+                            endpoint,
+                            "/api/generate",
+                            json.dumps(ollama_data),
+                            provider_name="ollama",
+                        ):
+                            chunks.append(chunk)
+                            # Check if chunk contains error
+                            try:
+                                chunk_str = chunk.decode()
+                                if '"error"' in chunk_str:
+                                    error_occurred = True
+                                    log(
+                                        f"[{request_id}] Error in Ollama streaming response, will try fallback"
+                                    )
+                                    break
+                            except:
+                                pass
+
+                        # If error occurred, try fallback
+                        if error_occurred:
+                            if not fallback_attempted:
+                                fallback_attempted = True
+                                log(
+                                    f"[{request_id}] Ollama streaming failed, trying fallback model..."
+                                )
+                                continue
+                            else:
+                                # Already tried fallback, send error
+                                self.send_response(503)
+                                self.send_header("Content-Type", "application/json")
+                                self.end_headers()
+                                self.wfile.write(
+                                    json.dumps(
+                                        {"error": "All providers failed"}
+                                    ).encode()
+                                )
+                                return
+
+                        # No error, send streaming response
                         self.send_response(200)
                         self.send_header("Content-Type", "text/event-stream")
                         self.send_header("Cache-Control", "no-cache")
@@ -1147,12 +1226,7 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                         chunk_id = os.urandom(4).hex()
                         buffer = b""
 
-                        for chunk in forward_streaming_request(
-                            endpoint,
-                            "/api/generate",
-                            json.dumps(ollama_data),
-                            provider_name="ollama",
-                        ):
+                        for chunk in chunks:
                             buffer += chunk
                             # Process complete lines
                             while b"\n" in buffer:
