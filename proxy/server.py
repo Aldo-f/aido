@@ -882,39 +882,45 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
         while True:
             # Use requested model if provided, otherwise select best model
             if requested_model and not fallback_attempted:
-                # Handle AIDO meta-models
+                # Handle AIDO meta-models (with or without aido/ prefix)
+                # OpenCode sometimes strips the aido/ prefix
+                model_type = None
                 if requested_model.startswith("aido/"):
                     model_type = requested_model.split("/")[1]
-                    if model_type in ("auto", "cloud", "local"):
-                        log(f"[{request_id}] Using AIDO meta-model: {requested_model}")
-                        model, provider, endpoint = select_model_by_type(
-                            user_message, model_type
+                elif requested_model in ("auto", "cloud", "local"):
+                    model_type = requested_model
+                    log(
+                        f"[{request_id}] OpenCode sent model without prefix: {requested_model}"
+                    )
+
+                if model_type in ("auto", "cloud", "local"):
+                    log(f"[{request_id}] Using AIDO meta-model: aido/{model_type}")
+                    model, provider, endpoint = select_model_by_type(
+                        user_message, model_type
+                    )
+                    if not model:
+                        log(
+                            f"[{request_id}] No models available for type: {model_type}",
+                            "ERROR",
                         )
-                        if not model:
-                            log(
-                                f"[{request_id}] No models available for type: {model_type}",
-                                "ERROR",
-                            )
-                            self.send_json(
-                                {
-                                    "error": f"No models available for type: {model_type}"
-                                },
-                                503,
-                            )
-                            return
-                        # Remove aido/ prefix for downstream processing
-                        requested_model = None
-                    else:
-                        # Try to find the specific model (strip aido/ prefix)
-                        specific_model = requested_model[5:]  # Remove "aido/"
-                        model, provider, endpoint = find_model_provider(specific_model)
-                        if not model:
-                            # Model not found, fall back to auto-selection
-                            log(
-                                f"[{request_id}] Requested model '{requested_model}' not found, auto-selecting"
-                            )
-                            model, provider, endpoint = select_model(user_message)
-                            requested_model = None  # Prevent further use
+                        self.send_json(
+                            {"error": f"No models available for type: {model_type}"},
+                            503,
+                        )
+                        return
+                    # Remove aido/ prefix for downstream processing
+                    requested_model = None
+                elif requested_model.startswith("aido/"):
+                    # Try to find the specific model (strip aido/ prefix)
+                    specific_model = requested_model[5:]  # Remove "aido/"
+                    model, provider, endpoint = find_model_provider(specific_model)
+                    if not model:
+                        # Model not found, fall back to auto-selection
+                        log(
+                            f"[{request_id}] Requested model '{requested_model}' not found, auto-selecting"
+                        )
+                        model, provider, endpoint = select_model(user_message)
+                        requested_model = None  # Prevent further use
                 else:
                     # Find provider for requested model
                     model, provider, endpoint = find_model_provider(requested_model)

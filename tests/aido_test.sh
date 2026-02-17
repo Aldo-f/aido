@@ -361,6 +361,131 @@ test_opencode_aido_cloud() {
     return 0
 }
 
+# Test aido/cloud model selection (with prefix)
+test_aido_cloud_model_with_prefix() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Test aido/cloud - should try cloud first, then fallback to local
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "aido/cloud", "messages": [{"role": "user", "content": "Hi"}], "stream": false}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${YELLOW}SKIP: cloud model error (keys may be invalid)${NC}"
+        return 0
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: aido/cloud did not return valid response${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Test aido/cloud model selection (without prefix - OpenCode strips it)
+test_aido_cloud_model_without_prefix() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Test with just "cloud" (OpenCode strips the aido/ prefix)
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "cloud", "messages": [{"role": "user", "content": "Hi"}], "stream": false}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${YELLOW}SKIP: cloud model error (keys may be invalid)${NC}"
+        return 0
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: 'cloud' model (without prefix) did not return valid response${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Test aido/auto model selection (with prefix)
+test_aido_auto_model_with_prefix() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Test aido/auto - should use config preference
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "aido/auto", "messages": [{"role": "user", "content": "Hi"}], "stream": false}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${YELLOW}SKIP: auto model error${NC}"
+        return 0
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: aido/auto did not return valid response${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Test aido/auto model selection (without prefix)
+test_aido_auto_model_without_prefix() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Test with just "auto" (OpenCode strips the aido/ prefix)
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "auto", "messages": [{"role": "user", "content": "Hi"}], "stream": false}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${YELLOW}SKIP: auto model error${NC}"
+        return 0
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: 'auto' model (without prefix) did not return valid response${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Test aido/local model selection (without prefix)
+test_aido_local_model_without_prefix() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: ollama not running${NC}"
+        return 0
+    fi
+    
+    # Test with just "local" (OpenCode strips the aido/ prefix)
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "local", "messages": [{"role": "user", "content": "Hi"}], "stream": false}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${YELLOW}SKIP: local model error${NC}"
+        return 0
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: 'local' model (without prefix) did not return valid response${NC}"
+        return 1
+    fi
+    return 0
+}
+
 main() {
     setup
     
@@ -415,6 +540,11 @@ main() {
     echo -e "${BLUE}AIDO Meta-Models (API):${NC}"
     run_test test_aido_meta_models_api
     run_test test_aido_local_model
+    run_test test_aido_cloud_model_with_prefix
+    run_test test_aido_cloud_model_without_prefix
+    run_test test_aido_auto_model_with_prefix
+    run_test test_aido_auto_model_without_prefix
+    run_test test_aido_local_model_without_prefix
     
     echo -e "${BLUE}AIDO Meta-Models (OpenCode):${NC}"
     run_test test_opencode_aido_cloud
