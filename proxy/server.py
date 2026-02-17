@@ -697,10 +697,13 @@ def forward_request(
     try:
         start_time = datetime.datetime.now()
         status_code = 200
+        # Use appropriate timeout - 60s for local providers (Ollama can be slow), 30s for cloud
+        is_local = "localhost" in endpoint or "127.0.0.1" in endpoint
+        timeout = 300 if stream else (60 if is_local else 30)
         if stream:
-            response = urllib.request.urlopen(req, timeout=300)
+            response = urllib.request.urlopen(req, timeout=timeout)
         else:
-            with urllib.request.urlopen(req, timeout=300) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 response = resp.read().decode()
                 status_code = resp.status
 
@@ -1040,9 +1043,26 @@ class AIDOProxyHandler(BaseHTTPRequestHandler):
                         pass
 
                     # Convert generate response to OpenAI format
+                    ollama_result = None
                     try:
-                        ollama_result = json.loads(result)
-                        response_content = ollama_result.get("response", "")
+                        # Handle NDJSON (newline-delimited JSON) - Ollama may return multiple lines
+                        lines = result.strip().split("\n")
+                        if len(lines) > 1:
+                            # Multiple lines - parse the last complete response
+                            for line in reversed(lines):
+                                line = line.strip()
+                                if line:
+                                    try:
+                                        ollama_result = json.loads(line)
+                                        if ollama_result.get("done", False):
+                                            break
+                                    except:
+                                        continue
+                        else:
+                            ollama_result = json.loads(result)
+                        response_content = (
+                            ollama_result.get("response", "") if ollama_result else ""
+                        )
                         response = {
                             "id": "chatcmpl-" + os.urandom(8).hex(),
                             "object": "chat.completion",
