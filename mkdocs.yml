@@ -1,0 +1,55 @@
+site_name: AIDO
+site_url: https://aldo-f.github.io/aido/
+site_description: Intelligent AI CLI with multi-provider support
+
+theme:
+  name: material
+  language: en
+  palette:
+    - scheme: default
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+
+extra:
+  alternate:
+    - link: /aido/
+      name: English
+      flag: 🇬🇧
+    - link: /aido/nl/
+      name: Nederlands
+      flag: 🇳🇱
+
+markdown_extensions:
+  - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - tables
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Usage: usage.md
+  - Commands: commands.md
+  - Configuration: configuration.md
+  - Nederlands: nl/index.md
+
+plugins:
+  - search
