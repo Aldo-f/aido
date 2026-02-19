@@ -21,3 +21,7 @@ __pycache__/
 # AIDO data
 .aido-data/
 
+
+# Build artifacts
+build/
+site/
