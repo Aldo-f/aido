@@ -56,7 +56,23 @@ python aido.py connect opencode
 
 ## Installation
 
-### Option 1: Download Binary (Recommended)
+### Option 1: pipx (Recommended for most users)
+
+```bash
+# Install pipx if you don't have it
+pipx install git+https://github.com/aldo-f/aido.git
+
+# Or from local directory
+pipx install /path/to/aido
+```
+
+### Option 2: pip install (Editable)
+
+```bash
+pip install -e .
+```
+
+### Option 3: Download Binary
 
 Download pre-built binaries from [Releases](https://github.com/aldo-f/aido/releases):
 - `aido` (Linux)

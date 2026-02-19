@@ -35,13 +35,19 @@ python aido.py run "Hello, help me write a function"
 
 ## Installation
 
-### Option 1: Python (recommended for development)
+### Option 1: pipx (Recommended)
+```bash
+pipx install git+https://github.com/aldo-f/aido.git
+aido run "Hello"
+```
+
+### Option 2: Python (recommended for development)
 ```bash
 pip install -r requirements.txt
 python aido.py serve
 ```
 
-### Option 2: Download Binary
+### Option 3: Download Binary
 Download pre-built binaries from [Releases](https://github.com/aldo-f/aido/releases)
 
 ---
