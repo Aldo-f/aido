@@ -260,6 +260,24 @@ async def try_providers(
             log(f"Trying {provider_name} with model {model_to_use}")
 
             if stream and provider_name in ("opencode-zen", "openai"):
+                try:
+                    test_result = await provider.chat(
+                        messages, model_to_use, False, api_key
+                    )
+                    key_manager.mark_key_success(provider_name)
+                except Exception as key_error:
+                    error_str = str(key_error)
+                    log(f"Key validation failed for {provider_name}: {error_str}")
+                    if "401" in error_str or "403" in error_str or "429" in error_str:
+                        try:
+                            status_code = int(error_str.split()[0])
+                            key_manager.mark_key_failed(
+                                provider_name, status_code, error_str
+                            )
+                        except (ValueError, IndexError):
+                            pass
+                    raise
+
                 return StreamingResponse(
                     provider.chat(messages, model_to_use, True, api_key),
                     media_type="text/event-stream",

@@ -89,13 +89,34 @@ class GeminiProvider(BaseProvider):
         stream_url = url.replace(":generateContent", ":streamGenerateContent")
         body["stream"] = True
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=10.0)
+        ) as client:
             try:
                 async with client.stream(
                     "POST", stream_url, json=body, headers=headers
                 ) as resp:
+                    if resp.status_code != 200:
+                        error_msg = f"Gemini API error: {resp.status_code}"
+                        try:
+                            error_data = resp.json()
+                            if "error" in error_data:
+                                error_msg = error_data["error"].get(
+                                    "message", error_msg
+                                )
+                        except Exception:
+                            pass
+                        raise Exception(f"{resp.status_code} {error_msg}")
+
                     async for line in resp.aiter_lines():
                         if line.startswith("data:"):
                             yield line + "\n\n"
+
+                    yield "data: [DONE]\n\n"
+            except httpx.ReadTimeout:
+                raise Exception("Read timeout - provider took too long")
             except Exception as e:
+                if "401" in str(e) or "403" in str(e) or "429" in str(e):
+                    raise
                 yield f'{{"error": "{str(e)}"}}\n\n'
+                yield "data: [DONE]\n\n"
