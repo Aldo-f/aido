@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-02-19
+
+### Fixed
+- **GitHub Release workflow**: Updated to use ncipollo/release-action for reliable release creation
+
 ## [1.1.0] - 2026-02-19
 
 ### Added

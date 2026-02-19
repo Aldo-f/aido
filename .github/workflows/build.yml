@@ -65,10 +65,10 @@ jobs:
         run: ls -R artifacts
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: ncipollo/release-action@v1
         with:
-          files: |
+          artifacts: |
             artifacts/aido-linux/aido
             artifacts/aido-macos/aido
             artifacts/aido-windows/aido.exe
-          generate_release_notes: true
+          generateReleaseNotes: true
