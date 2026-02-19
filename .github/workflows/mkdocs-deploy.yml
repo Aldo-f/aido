@@ -34,7 +34,7 @@ jobs:
           pip install mkdocs-material
 
       - name: Build MkDocs
-        run: mkdocs build
+        run: mkdocs build -f mkdocs.yml -d site
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
