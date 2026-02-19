@@ -2,7 +2,7 @@
 
 ## Overview
 
-AIDO is an intelligent AI CLI assistant with multi-provider support (Ollama, Docker Model Runner, OpenCode Zen, Google Gemini, OpenAI).
+AIDO is an intelligent AI CLI assistant with multi-provider support (Ollama, Docker Model Runner, OpenCode Zen, Google Gemini, OpenAI). The proxy server is built with FastAPI for optimal performance.
 
 ---
 
@@ -95,6 +95,9 @@ ruff check proxy/
 ./aido.sh serve 8080     # Custom port
 ./aido.sh stop           # Stop proxy
 ./aido.sh status         # Check status
+
+# Or directly with uvicorn:
+python3 -m uvicorn proxy.server:app --host 0.0.0.0 --port 11999
 ```
 
 ### Query Commands
@@ -105,6 +108,21 @@ ruff check proxy/
 ./aido.sh run -c         # Continue last session
 ./aido.sh list           # List available models
 ./aido.sh pull llama3.2  # Download model
+```
+
+### Manual API Testing
+
+```bash
+# Health check
+curl http://localhost:11999/health
+
+# List models
+curl http://localhost:11999/v1/models
+
+# Chat completion
+curl -X POST http://localhost:11999/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "aido/auto", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 ---
@@ -141,18 +159,25 @@ function risky_command() {
 ## Code Style - Python
 
 ### General Rules
-- Python 3.8+ (type hints, f-strings)
+- Python 3.10+ (modern type hints: `dict[str, Any]`, `list[str]`)
 - 100 character line limit, 4-space indent
+- Use async/await for FastAPI endpoints
 
-### Imports (stdlib only)
+### Imports
 ```python
+# Order: stdlib -> third-party -> local
+import json
 import os
 import sys
-import json
-import signal
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from typing import Any, AsyncGenerator
+
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+
+import config
+import key_manager
 ```
 
 ### Type Hints
@@ -162,6 +187,9 @@ def function(param: str) -> int:
 
 def optional_param(name: str, value: str | None = None) -> dict[str, Any]:
     ...
+
+async def async_function() -> AsyncGenerator[str, None]:
+    ...
 ```
 
 ### Naming
@@ -170,33 +198,22 @@ def optional_param(name: str, value: str | None = None) -> dict[str, Any]:
 - Constants: `UPPER_CASE`
 - Private: `_private_function()`
 
-### Docstrings
-```python
-def load_config():
-    """Load config from file.
-    
-    Returns:
-        dict: Configuration dictionary.
-    """
-```
-
 ### Error Handling
 ```python
-def safe_operation():
-    try:
-        result = risky_call()
-    except ValueError as e:
-        log(f"Value error: {e}", "ERROR")
-        return None
-    except Exception as e:
-        log(f"Unexpected error: {e}", "ERROR")
-        raise
+try:
+    resp = await client.post(url, json=body, headers=headers)
+    if resp.status_code in (401, 403, 429):
+        key_manager.mark_key_failed(provider, resp.status_code)
+        continue
+except httpx.HTTPError as e:
+    log(f"Request failed: {e}")
+    return JSONResponse({"error": str(e)}, status_code=500)
 ```
 
 ### Logging
 - Use `log()` function from server.py
 - Levels: "INFO", "WARN", "ERROR"
-- Include request IDs: `log(f"[{request_id}] message")`
+- Logs written to `~/.aido-data/logs/proxy.log`
 
 ---
 
@@ -205,15 +222,26 @@ def safe_operation():
 ```
 aido/
 ├── Makefile              # Build/lint/format commands
-├── aido.sh              # Main CLI (62KB)
+├── aido.sh               # Main CLI
+├── requirements.txt      # Python dependencies (FastAPI, uvicorn, httpx)
 ├── proxy/
-│   ├── __init__.py
-│   ├── database.py
-│   └── server.py        # HTTP proxy server
+│   ├── __init__.py       # Module exports
+│   ├── config.py         # Config loading, provider detection
+│   ├── key_manager.py    # Multi-key rotation with failure tracking
+│   ├── database.py       # SQLite for query tracking
+│   ├── server.py         # FastAPI main application
+│   └── providers/
+│       ├── __init__.py
+│       ├── base.py       # Base provider class
+│       ├── zen.py        # OpenCode Zen provider
+│       ├── gemini.py     # Google Gemini provider
+│       ├── openai.py     # OpenAI provider
+│       ├── ollama.py     # Ollama (local) provider
+│       └── dmr.py        # Docker Model Runner provider
 ├── tests/
 │   ├── aido_test.sh
 │   └── aido_opencode_test.py
-└── AGENTS.md            # This file
+└── AGENTS.md             # This file
 ```
 
 ---
@@ -230,12 +258,28 @@ Config: `~/.aido-data/config.json`
 | `local_first` | Prefer local (Ollama, DMR), fallback to cloud |
 | `auto` | Use cloud if keys available, otherwise local |
 
+### Meta Models
+
+| Model | Behavior |
+|-------|----------|
+| `aido/auto` | Auto-select based on selection mode |
+| `aido/cloud` | Only use cloud providers |
+| `aido/local` | Only use local providers |
+
 ### Provider Config
 ```json
 {
   "providers": {
     "ollama": {"enabled": true, "endpoint": "http://localhost:11434"},
-    "opencode-zen": {"enabled": true, "keys": [{"key": "sk-zen-xxx", "name": "primary"}]}
+    "opencode-zen": {
+      "enabled": true,
+      "keys": [
+        {"key": "sk-zen-xxx", "name": "primary"},
+        {"key": "sk-zen-yyy", "name": "backup"}
+      ]
+    },
+    "gemini": {"enabled": true, "keys": [{"key": "AIza...", "name": "default"}]},
+    "openai": {"enabled": true, "keys": [{"key": "sk-...", "name": "default"}]}
   },
   "selection": {"default_mode": "cloud_first"}
 }
@@ -243,13 +287,59 @@ Config: `~/.aido-data/config.json`
 
 ### Multi-Key Support
 - Keys tried sequentially
-- On HTTP 429/401/403, skip to next key
+- On HTTP 401/403/429, skip to next key
+- All keys exhausted → try next provider
+
+---
+
+## Provider Fallback Order
+
+### Cloud First (default)
+1. OpenCode Zen → 2. Gemini → 3. OpenAI → 4. Ollama → 5. Docker Model Runner
+
+### Local First
+1. Ollama → 2. Docker Model Runner → 3. OpenCode Zen → 4. Gemini → 5. OpenAI
 
 ---
 
 ## Development Tips
 
-1. **Debug**: Use `--debug` flag for verbose output
+1. **Debug**: Check `~/.aido-data/logs/proxy.log`
 2. **Test isolation**: Use `AIDO_TEST_DIR` env var
-3. **Proxy logs**: Check `~/.aido-data/logs/proxy.log`
-4. **Quick restart**: Stop/start proxy to pick up config changes
+3. **Quick restart**: `./aido.sh stop && ./aido.sh serve`
+4. **Key rotation**: Server resets key state on restart
+5. **Provider status**: `curl localhost:11999/health`
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check + provider status |
+| `/v1/models` | GET | List all available models |
+| `/v1/chat/completions` | POST | OpenAI-compatible chat |
+| `/chat/completions` | POST | Same as above (without /v1) |
+
+### Request Flow
+
+```
+OpenCode -> AIDO Proxy (port 11999)
+              |
+              v
+    [Resolve model: aido/auto, aido/cloud, specific model]
+              |
+              v
+    [Select provider based on mode]
+              |
+              v
+    [Get API key with rotation]
+              |
+              v
+    [Forward request to provider]
+              |
+              v
+    [Filter SSE comments if streaming]
+              |
+              <-- Return response to OpenCode
+```

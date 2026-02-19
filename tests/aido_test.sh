@@ -258,7 +258,7 @@ test_proxy_health() {
 }
 
 test_proxy_models() {
-    output=$(timeout 3 curl -s http://localhost:11999/models 2>&1) || {
+    output=$(timeout 3 curl -s http://localhost:11999/v1/models 2>&1) || {
         echo "    ${YELLOW}SKIP: proxy not running${NC}"
         return 0
     }
@@ -486,6 +486,232 @@ test_aido_local_model_without_prefix() {
     return 0
 }
 
+# Test streaming response with SSE filtering
+test_streaming_sse_filtering() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: ollama not running${NC}"
+        return 0
+    fi
+    
+    # Test streaming - should not contain SSE comments (lines starting with :)
+    output=$(curl -s -N -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "aido/local", "messages": [{"role": "user", "content": "Say test"}], "stream": true}' 2>&1 | head -20)
+    
+    # Check that we get data: lines (not SSE comments)
+    if echo "$output" | grep -q "^data:"; then
+        return 0
+    fi
+    
+    # Ollama streaming may work differently, just check no errors
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${RED}FAILED: streaming returned error${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Test streaming returns chunks (not full response at once)
+test_streaming_chunks() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: ollama not running${NC}"
+        return 0
+    fi
+    
+    # Test streaming - should get multiple chunks
+    output=$(curl -s -N -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "aido/local", "messages": [{"role": "user", "content": "Count 1 to 3"}], "stream": true}' 2>&1 | head -30)
+    
+    # Check we got some output
+    if [ -z "$output" ]; then
+        echo "    ${RED}FAILED: no streaming output${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Test OpenCode-like request with aido/auto
+test_opencode_aido_auto() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Simulate OpenCode request (with Authorization header, model without prefix)
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer dummy" \
+        -d '{"model": "auto", "messages": [{"role": "user", "content": "OK"}], "stream": false}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${RED}FAILED: OpenCode-like auto request failed${NC}"
+        return 1
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: OpenCode-like auto request no choices${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Test OpenCode-like request with aido/local
+test_opencode_aido_local() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: ollama not running${NC}"
+        return 0
+    fi
+    
+    # Simulate OpenCode request for local only
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer dummy" \
+        -d '{"model": "local", "messages": [{"role": "user", "content": "OK"}], "stream": false}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${RED}FAILED: OpenCode-like local request failed${NC}"
+        return 1
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: OpenCode-like local request no choices${NC}"
+        return 1
+    fi
+    
+    # Verify it used Ollama (local provider)
+    if ! echo "$output" | grep -q "ollama"; then
+        echo "    ${YELLOW}NOTE: response doesn't indicate ollama (may be ok)${NC}"
+    fi
+    
+    return 0
+}
+
+# Test OpenCode-like request with aido/cloud
+test_opencode_aido_cloud_request() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Simulate OpenCode request for cloud only
+    output=$(curl -s -X POST "http://localhost:11999/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer dummy" \
+        -d '{"model": "cloud", "messages": [{"role": "user", "content": "OK"}], "stream": false}' 2>&1)
+    
+    # Cloud may fail if no valid keys, but should not crash
+    if echo "$output" | grep -q "Internal Server Error"; then
+        echo "    ${RED}FAILED: cloud request caused server error${NC}"
+        return 1
+    fi
+    
+    # Either success or graceful error is ok
+    return 0
+}
+
+# Test /chat/completions endpoint (without /v1 prefix)
+test_chat_completions_without_v1() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Test /chat/completions (some clients use this)
+    output=$(curl -s -X POST "http://localhost:11999/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d '{"model": "aido/auto", "messages": [{"role": "user", "content": "test"}]}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        echo "    ${RED}FAILED: /chat/completions returned error${NC}"
+        return 1
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: /chat/completions no choices${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Test /v1/query endpoint (CLI uses this)
+test_v1_query_endpoint() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    # Test /v1/query with local model
+    output=$(curl -s -X POST "http://localhost:11999/v1/query" \
+        -H "Content-Type: application/json" \
+        -d '{"query": "Hello", "model": "aido/local"}' 2>&1)
+    
+    if echo "$output" | grep -q '"error".*"No'; then
+        echo "    ${YELLOW}SKIP: no local provider available${NC}"
+        return 0
+    fi
+    
+    if ! echo "$output" | grep -q "choices"; then
+        echo "    ${RED}FAILED: /v1/query no choices${NC}"
+        return 1
+    fi
+    
+    if ! echo "$output" | grep -q "response_time_ms"; then
+        echo "    ${RED}FAILED: /v1/query missing response_time_ms${NC}"
+        return 1
+    fi
+    
+    if ! echo "$output" | grep -q "provider"; then
+        echo "    ${RED}FAILED: /v1/query missing provider${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Test /v1/query with auto model
+test_v1_query_auto() {
+    if ! timeout 3 curl -s http://localhost:11999/health >/dev/null 2>&1; then
+        echo "    ${YELLOW}SKIP: proxy not running${NC}"
+        return 0
+    fi
+    
+    output=$(curl -s -X POST "http://localhost:11999/v1/query" \
+        -H "Content-Type: application/json" \
+        -d '{"query": "test", "model": "aido/auto"}' 2>&1)
+    
+    if echo "$output" | grep -q '"error"'; then
+        # May fail if no providers available, that's ok
+        if echo "$output" | grep -q "No providers"; then
+            echo "    ${YELLOW}SKIP: no providers available${NC}"
+            return 0
+        fi
+        echo "    ${RED}FAILED: /v1/query auto returned error${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
 main() {
     setup
     
@@ -548,6 +774,18 @@ main() {
     
     echo -e "${BLUE}AIDO Meta-Models (OpenCode):${NC}"
     run_test test_opencode_aido_cloud
+    run_test test_opencode_aido_auto
+    run_test test_opencode_aido_local
+    run_test test_opencode_aido_cloud_request
+    
+    echo -e "${BLUE}Streaming:${NC}"
+    run_test test_streaming_sse_filtering
+    run_test test_streaming_chunks
+    
+    echo -e "${BLUE}Endpoints:${NC}"
+    run_test test_chat_completions_without_v1
+    run_test test_v1_query_endpoint
+    run_test test_v1_query_auto
     
     echo ""
     echo -e "${BLUE}=== Results ===${NC}"

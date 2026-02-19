@@ -31,6 +31,29 @@ QUERY=""
 INSTALL_MODE=false
 UNINSTALL_MODE=false
 
+# ==================== HELP SYSTEM ====================
+
+check_help() {
+    local cmd_name="$1"
+    local help_text="$2"
+    shift 2
+    
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+            if [[ -n "$help_text" ]]; then
+                echo -e "$help_text"
+            else
+                echo -e "${CYAN}Usage:${NC} aido $cmd_name"
+                echo ""
+                echo -e "${YELLOW}No detailed help available for this command.${NC}"
+                echo "Run 'aido --help' for general usage."
+            fi
+            return 0
+        fi
+    done
+    return 1
+}
+
 # ==================== OLLAMA DETECTION ====================
 
 detect_ollama_install() {
@@ -450,6 +473,32 @@ normalize_provider_name() {
 }
 
 handle_key_command() {
+    local help_text="${CYAN}Usage:${NC} aido key <ACTION> [ARGS]
+
+${CYAN}Description:${NC}
+  Manage API keys for cloud providers.
+
+${CYAN}Actions:${NC}
+  list                    List all keys for all providers
+  add <provider> <key>    Add a key for a provider
+  delete <provider> <idx> Delete a key by index
+  delete-all <provider>   Delete all keys for a provider
+  test <provider>         Test keys for a provider
+  refresh <provider>      Refresh models for a provider
+
+${CYAN}Providers:${NC}
+  opencode-zen, gemini, openai, cloud
+
+${CYAN}Options:${NC}
+  -h, --help              Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido key list${NC}                      List all keys
+  ${GREEN}aido key add opencode-zen sk-xxx${NC}   Add a key
+  ${GREEN}aido key test opencode-zen${NC}         Test keys"
+    
+    check_help key "$help_text" "$@" && return 0
+    
     local action="${2:-list}"
     local provider="${3:-}"
     local key="${4:-}"
@@ -775,6 +824,14 @@ get_first_provider_key() {
     echo "$first_key"
 }
 
+get_provider_keys() {
+    local provider="$1"
+    local config
+    config=$(cat "$DATA_DIR/config.json" 2>/dev/null)
+    
+    echo "$config" | jq -r ".providers.\"$provider\".keys // [] | .[].key" 2>/dev/null
+}
+
 validate_endpoint() {
     local provider="$1"
     local endpoint="$2"
@@ -910,6 +967,19 @@ refresh_all_key_models() {
 }
 
 run_init() {
+    local help_text="${CYAN}Usage:${NC} aido init
+
+${CYAN}Description:${NC}
+  Initialize AIDO and check all providers.
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido init${NC}            Initialize and check providers"
+    
+    check_help init "$help_text" "$@" && return 0
+    
     echo -e "${CYAN}AIDO Init${NC}"
     echo "========="
     echo ""
@@ -989,12 +1059,30 @@ run_init() {
 }
 
 handle_pull_command() {
+    local help_text="${CYAN}Usage:${NC} aido pull [MODEL]
+
+${CYAN}Description:${NC}
+  Download models from Ollama.
+
+${CYAN}Arguments:${NC}
+  MODEL             Model name to download (e.g., llama3.2:latest)
+  --all             Download all recommended models
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido pull llama3.2:latest${NC}    Download specific model
+  ${GREEN}aido pull --all${NC}             Download all recommended models"
+    
+    check_help pull "$help_text" "$@" && return 0
+    
     local model="${2:-}"
     
     if [ -z "$model" ]; then
-        echo "Usage: aido pull [model]"
+        echo -e "${YELLOW}Usage: aido pull [MODEL]${NC}"
         echo ""
-        echo "Download models from providers"
+        echo "Download models from Ollama."
         echo ""
         echo "Examples:"
         echo "  aido pull llama3.2:latest    # Download from Ollama"
@@ -1011,17 +1099,55 @@ handle_pull_command() {
 }
 
 handle_run_command() {
-    local query="$*"
+    local help_text="${CYAN}Usage:${NC} aido run [OPTIONS] [QUERY]
+
+${CYAN}Description:${NC}
+  Run a query or start interactive mode.
+
+${CYAN}Arguments:${NC}
+  QUERY             The query to send (optional, starts interactive mode if omitted)
+
+${CYAN}Options:${NC}
+  -c, --continue    Continue last session
+  -s, --session ID  Continue specific session
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido run${NC}                        Start interactive mode
+  ${GREEN}aido run \"What is Python?\"${NC}     Run a single query
+  ${GREEN}aido run -c${NC}                     Continue last session"
+    
+    if check_help run "$help_text" "$@"; then
+        exit 0
+    fi
+    
+    local query=""
     local continue_session=false
     local session_id=""
     
-    for arg in "$@"; do
-        case "$arg" in
+    # Parse options and capture query
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
             -c|--continue)
                 continue_session=true
+                shift
                 ;;
             -s|--session)
-                session_id="$arg"
+                session_id="$2"
+                shift 2
+                ;;
+            -h|--help)
+                # Already handled by check_help
+                shift
+                ;;
+            *)
+                # Capture as query
+                if [ -z "$query" ]; then
+                    query="$1"
+                else
+                    query="$query $1"
+                fi
+                shift
                 ;;
         esac
     done
@@ -1038,6 +1164,25 @@ handle_run_command() {
 }
 
 handle_session_command() {
+    local help_text="${CYAN}Usage:${NC} aido session <ACTION> [NAME]
+
+${CYAN}Description:${NC}
+  Manage conversation sessions.
+
+${CYAN}Actions:${NC}
+  list              List all sessions
+  new <name>        Create a new session
+  delete <name>     Delete a session
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido session list${NC}           List sessions
+  ${GREEN}aido session new myproject${NC}  Create new session"
+    
+    check_help session "$help_text" "$@" && return 0
+    
     local action="${2:-list}"
     local session_name="${3:-}"
     
@@ -1069,10 +1214,43 @@ handle_session_command() {
 }
 
 auth_zen() {
+    local help_text="${CYAN}Usage:${NC} aido auth [PROVIDER]
+
+${CYAN}Description:${NC}
+  Open authentication page for a cloud provider.
+
+${CYAN}Arguments:${NC}
+  PROVIDER          Provider name (zen, gemini, openai)
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido auth zen${NC}        Open OpenCode Zen auth page
+  ${GREEN}aido auth gemini${NC}     Open Google Gemini auth page"
+    
+    check_help auth "$help_text" "$@" && return 0
+    
     open_url "https://opencode.ai/auth"
 }
 
 connect_opencode() {
+    local help_text="${CYAN}Usage:${NC} aido connect [CLIENT]
+
+${CYAN}Description:${NC}
+  Configure a client to use AIDO as AI provider.
+
+${CYAN}Arguments:${NC}
+  CLIENT            Client name (opencode)
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido connect opencode${NC}    Configure OpenCode to use AIDO"
+    
+    check_help connect "$help_text" "$@" && return 0
+    
     local config_dir="${HOME}/.config/opencode"
     local config_file="$config_dir/opencode.jsonc"
     
@@ -1438,94 +1616,57 @@ add_message_to_session() {
 
 execute_query() {
     local query="$1"
-    local start_time
-    start_time=$(date +%s%N)
+    local model="${2:-aido/auto}"
     
-    local model
-    model=$(select_model "$query")
-    
-    if [ -z "$model" ]; then
-        error "No model selected"
+    # Ensure proxy is running
+    if ! curl -s http://localhost:11999/health > /dev/null 2>&1; then
+        error "AIDO proxy is not running. Run 'aido serve' first."
         return 1
     fi
     
-    # Always get provider from model (model selection already respects preference)
-    local provider
-    provider=$(get_provider_for_model "$model")
+    # Use proxy for query
+    local response
+    local raw_response
+    raw_response=$(curl -s -X POST http://localhost:11999/v1/query \
+        -H "Content-Type: application/json" \
+        -d "{\"query\": \"$query\", \"model\": \"$model\"}" 2>/dev/null)
     
-    local endpoint
-    case "$provider" in
-        docker-model-runner) endpoint="$DMR_ENDPOINT" ;;
-        opencode-zen) endpoint="$OPENCODE_ZEN_ENDPOINT" ;;
-        gemini) endpoint="$GEMINI_ENDPOINT" ;;
-        cloud) endpoint="$CLOUD_ENDPOINT" ;;
-        *) endpoint="$OLLAMA_ENDPOINT" ;;
-    esac
+    # Parse response
+    local provider
+    local response_model
+    local response_time_ms
+    local content
+    local error_msg
+    
+    provider=$(echo "$raw_response" | jq -r '.provider // "unknown"' 2>/dev/null)
+    response_model=$(echo "$raw_response" | jq -r '.model // "unknown"' 2>/dev/null)
+    response_time_ms=$(echo "$raw_response" | jq -r '.response_time_ms // 0' 2>/dev/null)
+    content=$(echo "$raw_response" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
+    error_msg=$(echo "$raw_response" | jq -r '.error // empty' 2>/dev/null)
     
     local agent_name
-    agent_name=$(echo "$model" | cut -d':' -f1 | sed 's/-cloud//')
+    agent_name=$(echo "$response_model" | cut -d':' -f1 | sed 's/-cloud//')
     
-    info "Using: $model (provider: $provider)"
-    
-    local response
-    local api_key
-    
-    case "$provider" in
-        docker-model-runner)
-            # DMR uses OpenAI-compatible API
-            response=$(curl -s -X POST "$endpoint/chat/completions" \
-                -H "Content-Type: application/json" \
-                -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"$query\"}], \"stream\": false}" | \
-                jq -r '.choices[0].message.content' 2>/dev/null) || true
-            ;;
-        opencode-zen)
-            # OpenCode Zen API
-            api_key=$(get_first_provider_key "opencode-zen")
-            response=$(curl -s -X POST "$endpoint/v1/chat/completions" \
-                -H "Content-Type: application/json" \
-                -H "Authorization: Bearer $api_key" \
-                -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"$query\"}], \"stream\": false}" | \
-                jq -r '.choices[0].message.content' 2>/dev/null) || true
-            ;;
-        gemini)
-            # Gemini API
-            api_key=$(get_first_provider_key "gemini")
-            response=$(curl -s -X POST "$endpoint/models/$model:generateContent" \
-                -H "Content-Type: application/json" \
-                -H "Authorization: Bearer $api_key" \
-                -d "{\"contents\": [{\"parts\": [{\"text\": \"$query\"}]}]}" | \
-                jq -r '.candidates[0].content.parts[0].text' 2>/dev/null) || true
-            ;;
-        cloud)
-            # OpenAI API
-            api_key=$(get_first_provider_key "cloud")
-            response=$(curl -s -X POST "$endpoint/v1/chat/completions" \
-                -H "Content-Type: application/json" \
-                -H "Authorization: Bearer $api_key" \
-                -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"$query\"}], \"stream\": false}" | \
-                jq -r '.choices[0].message.content' 2>/dev/null) || true
-            ;;
-        *)
-            # Ollama API
-            response=$(curl -s -X POST "$endpoint/api/generate" \
-                -d "{\"model\": \"$model\", \"prompt\": \"$query\", \"stream\": false}" | \
-                jq -r '.response' 2>/dev/null) || true
-            ;;
-    esac
-    
-    local end_time end_time_sec
-    end_time=$(date +%s%N)
-    end_time_sec=$(( (end_time - start_time) / 1000000 ))
+    info "Using: $response_model (provider: $provider)"
     
     echo ""
-    echo "[${CYAN}${agent_name}${NC}] $response"
-    
-    if [ "$SHOW_TIMING" = true ]; then
-        info "Response time: ${end_time_sec}ms"
+    if [ -n "$error_msg" ]; then
+        echo -e "[${RED}${agent_name}${NC}] Error: $error_msg"
+    elif [ -n "$content" ]; then
+        echo -e "[${CYAN}${agent_name}${NC}] $content"
+    else
+        echo -e "[${YELLOW}${agent_name}${NC}] No response"
     fi
     
-    add_message_to_session "user" "$query" "$model"
-    add_message_to_session "assistant" "$response" "$model"
+    if [ "$SHOW_TIMING" = true ] && [ "$response_time_ms" -gt 0 ]; then
+        info "Response time: ${response_time_ms}ms"
+    fi
+    
+    # Update session
+    add_message_to_session "user" "$query" "$response_model"
+    if [ -n "$content" ]; then
+        add_message_to_session "assistant" "$content" "$response_model"
+    fi
     save_session
 }
 
@@ -1620,36 +1761,143 @@ handle_command() {
 # ==================== PROXY COMMANDS ====================
 
 proxy_start() {
+    local help_text="${CYAN}Usage:${NC} aido serve [PORT]
+
+${CYAN}Description:${NC}
+  Start the AIDO proxy server with OpenAI-compatible API.
+
+${CYAN}Arguments:${NC}
+  PORT              Port number (default: 11999)
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido serve${NC}           Start on default port 11999
+  ${GREEN}aido serve 8080${NC}      Start on port 8080
+
+${CYAN}API Endpoints:${NC}
+  http://localhost:PORT/health              Health check
+  http://localhost:PORT/v1/models           List models
+  http://localhost:PORT/v1/chat/completions Chat API"
+    
+    check_help serve "$help_text" "$@" && return 0
+    
     local port="${1:-11999}"
     echo "Starting AIDO Proxy on port $port..."
     
-    # Check DATA_DIR first, then SCRIPT_DIR
-    local proxy_dir="$DATA_DIR/proxy"
-    if [ ! -d "$proxy_dir" ]; then
-        proxy_dir="$SCRIPT_DIR/proxy"
+    # Resolve actual script directory (handles symlinks)
+    local actual_script
+    if command -v readlink >/dev/null 2>&1; then
+        actual_script="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+    else
+        actual_script="${BASH_SOURCE[0]}"
+    fi
+    local script_dir="$(cd "$(dirname "$actual_script")" && pwd)"
+    
+    # Find proxy module directory
+    local proxy_dir=""
+    if [ -d "$script_dir/proxy" ] && [ -f "$script_dir/proxy/server.py" ]; then
+        proxy_dir="$script_dir"
+    elif [ -d "$DATA_DIR/proxy" ] && [ -f "$DATA_DIR/proxy/server.py" ]; then
+        proxy_dir="$DATA_DIR"
+    elif [ -d "/media/aldo/shared/aido/proxy" ]; then
+        proxy_dir="/media/aldo/shared/aido"
     fi
     
-    python3 "$proxy_dir/server.py" start --port "$port"
+    if [ -z "$proxy_dir" ]; then
+        echo "Error: Cannot find proxy module directory"
+        exit 1
+    fi
+    
+    # Set PYTHONPATH to include the proxy directory
+    export PYTHONPATH="$proxy_dir${PYTHONPATH:+:$PYTHONPATH}"
+    
+    # Run FastAPI server in background
+    cd "$proxy_dir"
+    python3 -m uvicorn proxy.server:app --host 0.0.0.0 --port "$port" &
+    local pid=$!
+    echo $pid > "$DATA_DIR/aido-proxy.pid"
+    sleep 2
+    
+    # Check if server started
+    if curl -s "http://localhost:$port/health" > /dev/null 2>&1; then
+        echo "AIDO Proxy started on port $port (PID $pid)"
+    else
+        echo "Failed to start AIDO Proxy"
+        rm -f "$DATA_DIR/aido-proxy.pid"
+        exit 1
+    fi
 }
 
 proxy_stop() {
-    # Check DATA_DIR first, then SCRIPT_DIR
-    local proxy_dir="$DATA_DIR/proxy"
-    if [ ! -d "$proxy_dir" ]; then
-        proxy_dir="$SCRIPT_DIR/proxy"
+    local help_text="${CYAN}Usage:${NC} aido stop
+
+${CYAN}Description:${NC}
+  Stop the AIDO proxy server.
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido stop${NC}            Stop the proxy server"
+    
+    check_help stop "$help_text" "$@" && return 0
+    
+    # Check for PID file
+    if [ -f "$DATA_DIR/aido-proxy.pid" ]; then
+        local pid=$(cat "$DATA_DIR/aido-proxy.pid")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null
+            rm -f "$DATA_DIR/aido-proxy.pid"
+            echo "AIDO Proxy stopped"
+            return
+        fi
     fi
     
-    python3 "$proxy_dir/server.py" stop
+    # Fallback: kill by port
+    local port=11999
+    if lsof -ti:$port > /dev/null 2>&1; then
+        lsof -ti:$port | xargs -r kill -9 2>/dev/null
+        echo "AIDO Proxy stopped (port $port)"
+    else
+        echo "AIDO Proxy is not running"
+    fi
 }
 
 proxy_status() {
-    # Check DATA_DIR first, then SCRIPT_DIR
-    local proxy_dir="$DATA_DIR/proxy"
-    if [ ! -d "$proxy_dir" ]; then
-        proxy_dir="$SCRIPT_DIR/proxy"
+    local help_text="${CYAN}Usage:${NC} aido status
+
+${CYAN}Description:${NC}
+  Show AIDO proxy server status and provider health.
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido status${NC}          Show server status"
+    
+    check_help status "$help_text" "$@" && return 0
+    
+    local port=11999
+    
+    # Check for PID file
+    if [ -f "$DATA_DIR/aido-proxy.pid" ]; then
+        local pid=$(cat "$DATA_DIR/aido-proxy.pid")
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "AIDO Proxy is running (PID $pid)"
+            curl -s "http://localhost:$port/health" | jq '.'
+            return
+        fi
     fi
     
-    python3 "$proxy_dir/server.py" status
+    # Fallback: check if port is in use
+    if lsof -ti:$port > /dev/null 2>&1; then
+        echo "AIDO Proxy is running on port $port"
+        curl -s "http://localhost:$port/health" | jq '.'
+    else
+        echo "AIDO Proxy is not running"
+    fi
 }
 
 # ==================== CLI PARSING ====================
@@ -1779,11 +2027,31 @@ main() {
     
     # Check for connect subcommand
     if [ "$1" = "connect" ]; then
+        # Check for help flag first
+        for arg in "$@"; do
+            if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+                echo -e "${CYAN}Usage:${NC} aido connect [CLIENT]
+
+${CYAN}Description:${NC}
+  Configure a client to use AIDO as AI provider.
+
+${CYAN}Arguments:${NC}
+  CLIENT            Client name (opencode)
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido connect opencode${NC}    Configure OpenCode to use AIDO"
+                exit 0
+            fi
+        done
+        
         local connect_target="${2:-}"
         
         case "$connect_target" in
             opencode|zen|"")
-                connect_opencode
+                connect_opencode "$@"
                 exit $?
                 ;;
             *)
@@ -1797,6 +2065,27 @@ main() {
     
     # Check for auth subcommand
     if [ "$1" = "auth" ]; then
+        # Check for help flag first
+        for arg in "$@"; do
+            if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+                echo -e "${CYAN}Usage:${NC} aido auth [PROVIDER]
+
+${CYAN}Description:${NC}
+  Open authentication page for a cloud provider.
+
+${CYAN}Arguments:${NC}
+  PROVIDER          Provider name (zen, gemini, openai)
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido auth zen${NC}        Open OpenCode Zen auth page
+  ${GREEN}aido auth gemini${NC}     Open Google Gemini auth page"
+                exit 0
+            fi
+        done
+        
         auth_provider="${2:-}"
         
         case "$auth_provider" in
@@ -1846,26 +2135,75 @@ main() {
     
     # Check for stop subcommand
     if [ "$1" = "stop" ]; then
-        proxy_stop
+        proxy_stop "$@"
         exit $?
     fi
     
     # Check for status subcommand (standalone)
     if [ "$1" = "status" ]; then
-        if [ -z "${2:-}" ]; then
-            show_status
-            exit $?
-        fi
+        # Check for help flag first
+        for arg in "$@"; do
+            if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+                echo -e "${CYAN}Usage:${NC} aido status
+
+${CYAN}Description:${NC}
+  Show AIDO status including providers and models.
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido status${NC}          Show full AIDO status"
+                exit 0
+            fi
+        done
+        
+        show_status
+        exit $?
     fi
     
     # Check for list subcommand
     if [ "$1" = "list" ]; then
+        # Check for help flag
+        for arg in "$@"; do
+            if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+                echo -e "${CYAN}Usage:${NC} aido list
+
+${CYAN}Description:${NC}
+  List all available models from all providers.
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido list${NC}            Show all available models"
+                exit 0
+            fi
+        done
+        
         get_all_available_models | jq -r '.[] | "  \(.name) [\(.provider)]"'
         exit $?
     fi
     
     # Check for providers subcommand
     if [ "$1" = "providers" ]; then
+        # Check for help flag
+        for arg in "$@"; do
+            if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+                echo -e "${CYAN}Usage:${NC} aido providers
+
+${CYAN}Description:${NC}
+  Show status of all configured providers.
+
+${CYAN}Options:${NC}
+  -h, --help        Show this help message
+
+${CYAN}Examples:${NC}
+  ${GREEN}aido providers${NC}       Show provider status"
+                exit 0
+            fi
+        done
+        
         show_providers
         exit $?
     fi

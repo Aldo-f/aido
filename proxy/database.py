@@ -7,7 +7,7 @@ import sqlite3
 import json
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 DATA_DIR = Path(os.path.expanduser("~/.aido-data"))
@@ -95,6 +95,8 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+    init_key_failures_table()
 
 
 def log_query(
@@ -436,6 +438,185 @@ def summarize_query(query_text: str) -> str:
 
     first_words = " ".join(words[:8])
     return f"{first_words}... ({len(words)} words)"
+
+
+# ==================== KEY FAILURE TRACKING ====================
+
+
+def init_key_failures_table():
+    """Create key_failures table if not exists"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS key_failures (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            key_index INTEGER NOT NULL,
+            key_hash TEXT NOT NULL,
+            status_code INTEGER NOT NULL,
+            error_message TEXT,
+            retry_after_seconds INTEGER,
+            failed_at TEXT NOT NULL,
+            available_after TEXT,
+            UNIQUE(provider, key_index)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_key_failures_provider 
+        ON key_failures(provider)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_key_failures_available 
+        ON key_failures(available_after)
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def mark_key_failed_db(
+    provider: str,
+    key_index: int,
+    key_hash: str,
+    status_code: int,
+    error_message: Optional[str] = None,
+    retry_after_seconds: Optional[int] = None,
+):
+    """Mark a key as failed in the database with optional cooldown"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    failed_at = datetime.now().isoformat()
+
+    if retry_after_seconds:
+        available_after = (
+            datetime.now() + timedelta(seconds=retry_after_seconds)
+        ).isoformat()
+    elif status_code == 429:
+        available_after = (datetime.now() + timedelta(minutes=5)).isoformat()
+    elif status_code in (401, 403):
+        available_after = (datetime.now() + timedelta(hours=24)).isoformat()
+    else:
+        available_after = None
+
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO key_failures 
+        (provider, key_index, key_hash, status_code, error_message, 
+         retry_after_seconds, failed_at, available_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+        (
+            provider,
+            key_index,
+            key_hash,
+            status_code,
+            error_message,
+            retry_after_seconds,
+            failed_at,
+            available_after,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def is_key_available(provider: str, key_index: int) -> bool:
+    """Check if a key is available (not in cooldown)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT available_after FROM key_failures 
+        WHERE provider = ? AND key_index = ?
+    """,
+        (provider, key_index),
+    )
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return True
+
+    available_after = row["available_after"]
+    if not available_after:
+        return True
+
+    return datetime.now().isoformat() > available_after
+
+
+def get_next_available_key_index(
+    provider: str, total_keys: int, start_index: int = 0
+) -> int:
+    """Get the next available key index, skipping failed keys in cooldown"""
+    for i in range(total_keys):
+        idx = (start_index + i) % total_keys
+        if is_key_available(provider, idx):
+            return idx
+
+    return -1
+
+
+def clear_key_failure(provider: str, key_index: int):
+    """Clear a key failure (after successful use)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "DELETE FROM key_failures WHERE provider = ? AND key_index = ?",
+        (provider, key_index),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_provider_key_failures(provider: str) -> list:
+    """Get all failed keys for a provider"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT key_index, status_code, error_message, failed_at, available_after
+        FROM key_failures 
+        WHERE provider = ?
+        ORDER BY key_index
+    """,
+        (provider,),
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def cleanup_expired_failures():
+    """Remove expired key failures"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM key_failures 
+        WHERE available_after IS NOT NULL 
+        AND available_after < ?
+    """,
+        (datetime.now().isoformat(),),
+    )
+
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    return deleted
 
 
 if __name__ == "__main__":

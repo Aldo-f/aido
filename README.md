@@ -1,19 +1,22 @@
 # AIDO - Intelligent AI Assistant
 
-A unified AI CLI that intelligently routes queries across multiple providers (Ollama, Docker Model Runner, OpenCode Zen, Google Gemini, OpenAI).
+A unified AI CLI that intelligently routes queries across multiple providers (Ollama, Docker Model Runner, OpenCode Zen, Google Gemini, OpenAI). Built with FastAPI for optimal performance.
 
 ## Quick Start
 
 ```bash
-# 1. Start the proxy
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Start the proxy
 ./aido.sh serve
 
-# 2. Connect OpenCode to use AIDO
+# 3. Connect OpenCode to use AIDO
 ./aido.sh connect opencode
 
-# 3. Restart OpenCode
+# 4. Restart OpenCode
 
-# 4. Query using AIDO
+# 5. Query using AIDO
 ./aido.sh run "Hello, help me write a function"
 
 # Or use directly
@@ -31,6 +34,26 @@ A unified AI CLI that intelligently routes queries across multiple providers (Ol
 | `aido run [query]` | Run a query or start interactive mode |
 | `aido pull [model]` | Download a model |
 | `aido init` | Check all providers |
+
+## Meta Models
+
+AIDO provides special meta-models for intelligent routing:
+
+| Model | Behavior |
+|-------|----------|
+| `aido/auto` | Auto-select based on selection mode |
+| `aido/cloud` | Only use cloud providers (Zen, Gemini, OpenAI) |
+| `aido/local` | Only use local providers (Ollama, DMR) |
+
+```bash
+# Use with OpenCode
+opencode -m aido/auto run "Hello"
+
+# Or via API
+curl -X POST http://localhost:11999/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "aido/auto", "messages": [{"role": "user", "content": "Hello"}]}'
+```
 
 ## Configuration
 
@@ -72,13 +95,14 @@ AIDO supports multiple providers:
 | docker-model-runner | Docker Model Runner | No |
 | opencode-zen | OpenCode Zen | Yes |
 | gemini | Google Gemini | Yes |
-| cloud | OpenAI | Yes |
+| openai | OpenAI | Yes |
 
 ### Multi-Key Support
 
 You can add multiple API keys per provider. AIDO automatically handles:
 - **Rate limits (HTTP 429)**: Tries next key
 - **Auth errors (HTTP 401/403)**: Tries next key
+- **All keys failed**: Tries next provider
 
 ```bash
 # Add multiple keys
@@ -123,23 +147,40 @@ mv /tmp/c.json ~/.aido-data/config.json
 
 **Selection Priority:**
 - `cloud_first`: OpenCode Zen → Gemini → OpenAI → Ollama → DMR
-- `local_first`: Ollama → DMR → OpenCode Zen → Gemini → OpenAI |
+- `local_first`: Ollama → DMR → OpenCode Zen → Gemini → OpenAI
 
 ## Architecture
 
 ```
 ┌─────────────┐    localhost:11999     ┌─────────────┐
 │  OpenCode   │ ◄────────────────────► │  AIDO Proxy │
-│  (client)  │   OpenAI-compatible    │  (your AI)  │
+│  (client)  │   OpenAI-compatible    │  (FastAPI)  │
 └─────────────┘                        └──────┬──────┘
-                                              │
-                    ┌─────────────────────────┼─────────────────────────┐
-                    ▼                         ▼                         ▼
-            ┌───────────────┐         ┌───────────────┐         ┌───────────────┐
-            │  OpenCode Zen │         │    Ollama     │         │    Gemini     │
-            │   (API key)  │         │   (local)     │         │   (API key)   │
-            └───────────────┘         └───────────────┘         └───────────────┘
+                                               │
+                    ┌──────────────────────────┼──────────────────────────┐
+                    ▼                          ▼                          ▼
+            ┌───────────────┐          ┌───────────────┐          ┌───────────────┐
+            │  OpenCode Zen │          │    Ollama     │          │    Gemini     │
+            │   (API key)  │          │   (local)     │          │   (API key)   │
+            └───────────────┘          └───────────────┘          └───────────────┘
 ```
+
+### Key Features
+
+- **FastAPI**: High-performance async server
+- **Key Rotation**: Automatic retry with next key on 401/403/429
+- **Provider Fallback**: Cloud → Local fallback chain
+- **SSE Filtering**: Removes SSE comments from streaming responses
+- **Meta Models**: `aido/auto`, `aido/cloud`, `aido/local`
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check + provider status |
+| `/v1/models` | GET | List all available models |
+| `/v1/chat/completions` | POST | OpenAI-compatible chat |
+| `/chat/completions` | POST | Same as above (without /v1) |
 
 ## OpenCode Integration
 
@@ -191,3 +232,36 @@ aido status
 ```
 
 This installs `aido` to `/usr/local/bin/aido`.
+
+## Development
+
+### File Structure
+
+```
+aido/
+├── aido.sh               # Main CLI
+├── requirements.txt      # Python dependencies (FastAPI, uvicorn, httpx)
+├── proxy/
+│   ├── config.py         # Config loading, provider detection
+│   ├── key_manager.py    # Multi-key rotation with failure tracking
+│   ├── server.py         # FastAPI main application
+│   └── providers/
+│       ├── zen.py        # OpenCode Zen provider
+│       ├── gemini.py     # Google Gemini provider
+│       ├── openai.py     # OpenAI provider
+│       ├── ollama.py     # Ollama (local) provider
+│       └── dmr.py        # Docker Model Runner provider
+└── tests/
+    └── aido_test.sh
+```
+
+### Debug
+
+```bash
+# Check logs
+tail -f ~/.aido-data/logs/proxy.log
+
+# Manual test
+curl http://localhost:11999/health
+curl http://localhost:11999/v1/models
+```
