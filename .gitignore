@@ -25,3 +25,6 @@ __pycache__/
 # Build artifacts
 build/
 site/
+
+# Nested pycache
+**/__pycache__/
