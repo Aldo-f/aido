@@ -197,6 +197,9 @@ def resolve_model(model: str) -> tuple[str, str]:
         elif suffix == "local":
             return "local", "local"
 
+    if model in ("auto", "cloud", "local"):
+        return model, model
+
     if model in config.ZEN_MODELS:
         return model, "zen"
     if model in config.GEMINI_MODELS:
