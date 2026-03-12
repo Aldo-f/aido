@@ -15,7 +15,7 @@ const program = new Command();
 program
   .name('aido')
   .description('Local API key rotation proxy for LLM providers')
-  .version('0.1.0');
+  .version('0.2.0');
 
 // ─── add ────────────────────────────────────────────────────────────────────
 program
