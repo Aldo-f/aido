@@ -21,6 +21,8 @@ const LOCAL_PRIORITY: Array<{ provider: Provider; model: string }> = [
   { provider: 'ollama-local', model: 'qwen3:8b' },
 ];
 
+const LOCAL_CLOUD_MODELS = ['glm-5:cloud', 'kimi-k2.5:cloud', 'minimax-m2.5:cloud'];
+
 export function routeAidoModel(pathname: string): RouteResult {
   const parsed = parseAidoModel(pathname);
   
@@ -35,6 +37,14 @@ export function routeAidoModel(pathname: string): RouteResult {
   
   if (parsed.category === 'cloud') {
     if (parsed.model) {
+      if (LOCAL_CLOUD_MODELS.includes(parsed.model)) {
+        return {
+          provider: 'ollama-local',
+          model: parsed.model,
+          upstreamPath: '/v1/chat/completions',
+          isAuto: false,
+        };
+      }
       return {
         provider: 'zen',
         model: parsed.model,
