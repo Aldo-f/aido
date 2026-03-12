@@ -12,45 +12,27 @@ const DEFAULT_PROVIDER: Provider =
 const PORT = parseInt(process.env.PROXY_PORT ?? '4141', 10);
 const MAX_RETRIES = 3;
 
-function isAidoPath(pathname: string): boolean {
-  const clean = pathname.trim().replace(/^\/+|\/+$/g, '');
-  return clean.toLowerCase().startsWith('aido');
-}
+export function resolveProvider(pathname: string, body?: string): { provider: Provider | 'auto'; upstreamPath: string; isAidoAuto?: boolean; model?: string } {
+  // New format: route based on model name in request body
+  // Path should be /v1/... or /aido/v1/...
+  if (body) {
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed.model && typeof parsed.model === 'string') {
+        const route = routeAidoModel(parsed.model);
+        return {
+          provider: route.provider,
+          upstreamPath: '/v1/chat/completions',
+          isAidoAuto: route.isAuto,
+          model: route.model,
+        };
+      }
+    } catch {
+      // Invalid JSON or no model field - fall through to default
+    }
+  }
 
-export function resolveProvider(pathname: string): { provider: Provider | 'auto'; upstreamPath: string; isAidoAuto?: boolean; model?: string } {
-  if (pathname.startsWith('/auto/')) {
-    return { provider: 'auto', upstreamPath: pathname.slice('/auto'.length) };
-  }
-  
-  if (isAidoPath(pathname)) {
-    const v1Index = pathname.indexOf('/v1/');
-    let aidoPath: string;
-    let restPath: string;
-    
-    if (v1Index !== -1) {
-      aidoPath = pathname.slice(1, v1Index);
-      restPath = pathname.slice(v1Index + 1);
-    } else {
-      const slashIndex = pathname.indexOf('/', 1);
-      aidoPath = slashIndex === -1 ? pathname.slice(1) : pathname.slice(1, slashIndex);
-      restPath = slashIndex === -1 ? '' : pathname.slice(slashIndex);
-    }
-    
-    const route = routeAidoModel(aidoPath);
-    return { 
-      provider: route.provider, 
-      upstreamPath: restPath || '/v1/chat/completions',
-      isAidoAuto: route.isAuto,
-      model: route.model,
-    };
-  }
-  
-  const known: Provider[] = ['ollama-local', 'ollama', 'zen', 'openai', 'anthropic', 'groq', 'google'];
-  for (const p of known) {
-    if (pathname.startsWith(`/${p}/`)) {
-      return { provider: p, upstreamPath: pathname.slice(p.length + 1) };
-    }
-  }
+  // Default: use zen provider
   return { provider: DEFAULT_PROVIDER, upstreamPath: pathname };
 }
 
@@ -134,11 +116,12 @@ async function forwardRequest(
 export function createProxyServer(): http.Server {
   return http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
-    const { provider, upstreamPath, isAidoAuto } = resolveProvider(url.pathname + url.search);
 
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
     const body = Buffer.concat(chunks).toString();
+
+    const { provider, upstreamPath, isAidoAuto } = resolveProvider(url.pathname + url.search, body);
 
     const result = provider === 'auto' || isAidoAuto
       ? await forwardAuto(upstreamPath, req.method ?? 'GET', body)
@@ -153,15 +136,11 @@ export function startProxy(): void {
   const server = createProxyServer();
   server.listen(PORT, () => {
     console.log(`[aido-proxy] Listening on http://localhost:${PORT}`);
-    console.log(`[aido-proxy] Routes:`);
-    console.log(`             /auto/v1/...       → auto (legacy)`);
-    console.log(`             /aido/auto/...     → auto (tries all providers in order)`);
-    console.log(`             /aido/cloud/...    → cloud (zen → groq → openai → anthropic)`);
-    console.log(`             /aido/local/...   → local ollama`);
-    console.log(`             /aido/<provider>/... → specific provider`);
-    console.log(`             /v1/...            → ${DEFAULT_PROVIDER} (default)`);
-    console.log(`             /ollama-local/...  → Local Ollama`);
-    console.log(`             /ollama/...        → Ollama Cloud`);
-    console.log(`             /zen/v1/...        → OpenCode Zen`);
+    console.log(`[aido-proxy] Routing based on model name in request body:`);
+    console.log(`             /v1/chat/completions + model: "aido/auto"       → auto`);
+    console.log(`             /v1/chat/completions + model: "aido/cloud"      → cloud (zen → groq → openai → anthropic)`);
+    console.log(`             /v1/chat/completions + model: "aido/local"     → local ollama`);
+    console.log(`             /v1/chat/completions + model: "aido/zen/..."   → Zen`);
+    console.log(`             /v1/... (no model in body)             → ${DEFAULT_PROVIDER} (default)`);
   });
 }

@@ -1,6 +1,6 @@
 import type { Provider } from '../detector.js';
 import { AUTO_PRIORITY } from '../auto.js';
-import { parseAidoModel, type ParsedAidoModel } from './parser.js';
+import { parseAidoModelName, type ParsedAidoModel } from './parser.js';
 
 export interface RouteResult {
   provider: Provider | 'auto';
@@ -34,7 +34,7 @@ function addCloudSuffix(model: string): string {
 }
 
 export function routeAidoModel(pathname: string): RouteResult {
-  const parsed = parseAidoModel(pathname);
+  const parsed = parseAidoModelName(pathname);
   
   if (parsed.category === 'auto') {
     return {
