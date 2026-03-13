@@ -1,0 +1,25 @@
+{
+  "name": "aido-proxy",
+  "version": "0.2.0",
+  "description": "Local API key rotation proxy for LLM providers",
+  "type": "module",
+  "bin": {
+    "aido": "./aido"
+  },
+  "scripts": {
+    "install:global": "chmod +x aido && sudo cp aido /usr/local/bin/aido",
+    "install:local": "chmod +x aido && mkdir -p ~/.local/bin && ln -sf $(pwd)/aido ~/.local/bin/aido",
+    "test": "node --experimental-sqlite node_modules/.bin/vitest run",
+    "test:watch": "node --experimental-sqlite node_modules/.bin/vitest"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.5",
+    "vitest": "^4.0.18"
+  }
+}

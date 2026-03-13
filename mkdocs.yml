@@ -1,55 +1,45 @@
-site_name: AIDO
-site_url: https://aldo-f.github.io/aido/
-site_description: Intelligent AI CLI with multi-provider support
+site_name: AIdo
+site_description: Local API key rotation proxy for LLM providers
+site_author: Aldo
+
+repo_url: https://github.com/Aldo-f/aido
+repo_name: Aldo-f/aido
+
+dev_addr: '127.0.0.1:8000'
 
 theme:
   name: material
-  language: en
   palette:
-    - scheme: default
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
       primary: deep orange
       accent: orange
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - scheme: slate
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
       primary: deep orange
       accent: orange
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
   features:
+    - navigation.instant
+    - navigation.tracking
     - navigation.tabs
     - navigation.sections
-    - navigation.top
-    - search.suggest
-    - search.highlight
-
-extra:
-  alternate:
-    - link: /aido/
-      name: English
-      flag: 🇬🇧
-    - link: /aido/nl/
-      name: Nederlands
-      flag: 🇳🇱
-
-markdown_extensions:
-  - attr_list
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
-  - pymdownx.superfences
-  - tables
 
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Usage: usage.md
-  - Commands: commands.md
-  - Configuration: configuration.md
-  - Nederlands: nl/index.md
+  - Architecture: architecture.md
+  - API Reference: api.md
+  - Providers: providers.md
 
-plugins:
-  - search
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+copyright: >
+  &copy; 2024 Aldo
