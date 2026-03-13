@@ -1,5 +1,6 @@
 import type { Provider } from '../detector.js';
-import { AUTO_PRIORITY } from '../auto.js';
+import { AUTO_PRIORITY, type PriorityType } from '../auto.js';
+import { PRIORITIES } from '../priorities.js';
 import { parseAidoModelName, type ParsedAidoModel } from './parser.js';
 
 export interface RouteResult {
@@ -7,21 +8,49 @@ export interface RouteResult {
   model: string;
   upstreamPath: string;
   isAuto: boolean;
+  priorityType?: PriorityType;
 }
 
-const CLOUD_PRIORITY: Array<{ provider: Provider; model: string }> = [
-  { provider: 'zen', model: 'big-pickle' },
-  { provider: 'groq', model: 'llama3-8b-8192' },
-  { provider: 'openai', model: 'gpt-4o-mini' },
-  { provider: 'anthropic', model: 'claude-haiku-4-5' },
-  { provider: 'google', model: 'gemini-2.0-flash' },
-];
+const CLOUD_PRIORITY = PRIORITIES.cloud;
+const LOCAL_PRIORITY = PRIORITIES.local;
 
-const LOCAL_PRIORITY: Array<{ provider: Provider; model: string }> = [
-  { provider: 'ollama-local', model: 'qwen3:8b' },
-];
+const CACHE_TTL_MS = 60 * 60 * 1000;
+let cloudModelsCache: string[] | null = null;
+let cloudModelsCacheTime = 0;
 
-const LOCAL_CLOUD_MODELS = ['glm-5:cloud', 'kimi-k2.5:cloud', 'minimax-m2.5:cloud'];
+const STATIC_LOCAL_CLOUD_MODELS = ['glm-5:cloud', 'kimi-k2.5:cloud', 'minimax-m2.5:cloud'];
+
+async function fetchCloudModelsFromOllamaLocal(): Promise<string[]> {
+  const ollamaLocalUrl = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
+  try {
+    const res = await fetch(`${ollamaLocalUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return [];
+    const json = await res.json() as { models?: Array<{ name: string }> };
+    const models = json.models ?? [];
+    return models
+      .map(m => m.name)
+      .filter(name => name.endsWith(':cloud'));
+  } catch {
+    return [];
+  }
+}
+
+export async function refreshCloudModels(): Promise<string[]> {
+  const models = await fetchCloudModelsFromOllamaLocal();
+  const allCloudModels = [...new Set([...STATIC_LOCAL_CLOUD_MODELS, ...models])];
+  cloudModelsCache = allCloudModels;
+  cloudModelsCacheTime = Date.now();
+  return allCloudModels;
+}
+
+function getCloudModels(): string[] {
+  const now = Date.now();
+  if (cloudModelsCache && (now - cloudModelsCacheTime) < CACHE_TTL_MS) {
+    return cloudModelsCache;
+  }
+  refreshCloudModels().catch(() => {});
+  return cloudModelsCache ?? STATIC_LOCAL_CLOUD_MODELS;
+}
 
 const CLOUD_ONLY_MODELS: Record<string, string> = {
   'glm-5': 'glm-5:cloud',
@@ -42,17 +71,19 @@ export function routeAidoModel(pathname: string): RouteResult {
       model: AUTO_PRIORITY[0].model,
       upstreamPath: '/v1/chat/completions',
       isAuto: true,
+      priorityType: 'auto',
     };
   }
   
   if (parsed.category === 'cloud') {
     if (parsed.model) {
-      if (LOCAL_CLOUD_MODELS.includes(parsed.model)) {
+      if (getCloudModels().includes(parsed.model)) {
         return {
           provider: 'ollama-local',
           model: parsed.model,
           upstreamPath: '/v1/chat/completions',
           isAuto: false,
+          priorityType: 'local',
         };
       }
       return {
@@ -60,6 +91,7 @@ export function routeAidoModel(pathname: string): RouteResult {
         model: parsed.model,
         upstreamPath: '/v1/chat/completions',
         isAuto: true,
+        priorityType: 'cloud',
       };
     }
     return {
@@ -67,6 +99,7 @@ export function routeAidoModel(pathname: string): RouteResult {
       model: CLOUD_PRIORITY[0].model,
       upstreamPath: '/v1/chat/completions',
       isAuto: true,
+      priorityType: 'cloud',
     };
   }
   
@@ -77,6 +110,7 @@ export function routeAidoModel(pathname: string): RouteResult {
         model: parsed.model,
         upstreamPath: '/v1/chat/completions',
         isAuto: false,
+        priorityType: 'local',
       };
     }
     return {
@@ -84,6 +118,7 @@ export function routeAidoModel(pathname: string): RouteResult {
       model: LOCAL_PRIORITY[0].model,
       upstreamPath: '/v1/chat/completions',
       isAuto: true,
+      priorityType: 'local',
     };
   }
   

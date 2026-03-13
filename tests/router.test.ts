@@ -131,6 +131,13 @@ describe('getPriorityForCategory', () => {
     expect(priority[0].provider).toBe('zen');
   });
 
+  it('CLOUD_PRIORITY includes ollama-local with :cloud models', () => {
+    const priority = getPriorityForCategory('cloud');
+    const ollamaLocalProvider = priority.find(p => p.provider === 'ollama-local');
+    expect(ollamaLocalProvider).toBeDefined();
+    expect(ollamaLocalProvider?.model).toBe('glm-5:cloud');
+  });
+
   it('returns LOCAL_PRIORITY for local', () => {
     const priority = getPriorityForCategory('local');
     expect(priority[0].provider).toBe('ollama-local');
@@ -140,5 +147,23 @@ describe('getPriorityForCategory', () => {
   it('returns AUTO_PRIORITY for provider', () => {
     const priority = getPriorityForCategory('provider');
     expect(priority[0].provider).toBe('zen');
+  });
+});
+
+describe('cloud model detection', () => {
+  it('routes cloud model to ollama-local when in LOCAL_CLOUD_MODELS', async () => {
+    const { routeAidoModel, refreshCloudModels } = await import('../src/models/router.js');
+    await refreshCloudModels();
+    const result = routeAidoModel('aido/cloud/glm-5:cloud');
+    expect(result.provider).toBe('ollama-local');
+    expect(result.priorityType).toBe('local');
+  });
+
+  it('routes unknown cloud model to zen', async () => {
+    const { routeAidoModel, refreshCloudModels } = await import('../src/models/router.js');
+    await refreshCloudModels();
+    const result = routeAidoModel('aido/cloud/gpt-4o-mini');
+    expect(result.provider).toBe('zen');
+    expect(result.priorityType).toBe('cloud');
   });
 });
