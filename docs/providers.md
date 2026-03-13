@@ -33,7 +33,7 @@ Selects from cloud providers only:
 2. Groq (llama-3.1-8b-instant)
 3. OpenAI (gpt-4o-mini)
 4. Anthropic (claude-haiku-4-5)
-5. Ollama-Local (glm-5:cloud) - lokale cloud modellen
+5. Ollama-Local (glm-5:cloud) - local cloud models
 
 ### aido/local
 

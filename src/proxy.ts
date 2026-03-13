@@ -10,7 +10,6 @@ const DEFAULT_PROVIDER: Provider =
   (process.env.DEFAULT_PROVIDER as Provider) ?? 'zen';
 
 const PORT = parseInt(process.env.PROXY_PORT ?? '4141', 10);
-const MAX_RETRIES = 3;
 
 import { type PriorityType } from './auto.js';
 
@@ -45,7 +44,6 @@ async function forwardRequest(
   method: string,
   headers: Record<string, string>,
   body: string,
-  attempt = 0,
 ): Promise<{ status: number; body: string; headers: Record<string, string> }> {
   const rotator = getRotator(provider);
   const key = rotator.next();
@@ -93,12 +91,12 @@ async function forwardRequest(
       };
     }
 
-    if (res.status === 429 && attempt < MAX_RETRIES) {
+    if (res.status === 429) {
       const retryAfter = res.headers.get('retry-after');
       const cooldown = retryAfter ? parseInt(retryAfter, 10) : 3600;
       rotator.markLimited(key, cooldown);
-      console.log(`[proxy] 429 on ${provider} key ...${key.slice(-8)} → rotating (attempt ${attempt + 1}/${MAX_RETRIES})`);
-      return forwardRequest(provider, path, method, headers, body, attempt + 1);
+      console.log(`[proxy] 429 on ${provider} key ...${key.slice(-8)} → rotating to next key`);
+      return forwardRequest(provider, path, method, headers, body);
     }
 
     const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
