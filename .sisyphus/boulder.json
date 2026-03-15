@@ -1,9 +1,8 @@
 {
-  "active_plan": "/mnt/storage/Documents/GitCode/aido/.sisyphus/plans/aido-config-refactor.md",
-  "started_at": "2026-03-12T22:39:54.945Z",
-  "session_ids": [
-    "ses_31bd71bc3ffe6Yt5sKSRy20rb4"
-  ],
-  "plan_name": "aido-config-refactor",
-  "agent": "atlas"
+  "active_plan": "/mnt/storage/Documents/GitCode/aido/.sisyphus/plans/aido-hunt.md",
+  "started_at": "2026-03-14T21:42:00.000Z",
+  "session_ids": ["ses_318a31923ffePTkzrLmJi9jbt7"],
+  "plan_name": "aido-hunt",
+  "agent": "atlas",
+  "worktree_path": "/mnt/storage/Documents/GitCode/aido"
 }

@@ -2,7 +2,7 @@ import Exa from 'exa-js';
 import { PROVIDER_CONFIGS, detectProvider, type Provider } from './detector.js';
 import { addKeyToEnv } from './env.js';
 import { markSourceSearched, isSourceSearchedRecently, cleanOldSearchedSources } from './db.js';
-import { scanRepoWithGitleaks, type FoundSecret } from './hunt/gitleaks.js';
+import { scanRepoWithGitleaks, type FoundSecret } from './hunt-gitleaks.js';
 import fs from 'fs';
 import path from 'path';
 

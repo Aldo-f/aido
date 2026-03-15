@@ -5,7 +5,7 @@ import { logRequest } from './db.js';
 import { toOllamaBody, fromOllamaResponse, toOllamaPath } from './ollama.js';
 import { forwardAuto } from './auto.js';
 import { routeAidoModel } from './models/router.js';
-import { isPortInUse } from './utils/port-check.js';
+import { isPortInUse } from './port-check.js';
 import { writePid, readPid, deletePid, isStale } from './daemon.js';
 
 const DEFAULT_PROVIDER: Provider =

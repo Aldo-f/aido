@@ -14,6 +14,58 @@ const MODELS_ENDPOINT_PROVIDERS: Provider[] = ['zen', 'openai', 'groq', 'ollama'
 // Cache TTL: 1 hour
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
+interface ModelLimit {
+  context?: number;
+  input?: number;
+  output?: number;
+}
+
+interface ProviderModels {
+  [modelId: string]: {
+    limit?: ModelLimit;
+    reasoning?: boolean;
+    tool_call?: boolean;
+  };
+}
+
+interface ProviderData {
+  models: ProviderModels;
+}
+
+interface ModelsDevCache {
+  data: { [provider: string]: ProviderData };
+  fetchedAt: number;
+}
+
+const MODELS_DEV_CACHE_TTL = 24 * 60 * 60 * 1000;
+let modelsDevCache: ModelsDevCache | null = null;
+
+export async function fetchModelsDev(): Promise<{ [provider: string]: ProviderData }> {
+  if (modelsDevCache && Date.now() - modelsDevCache.fetchedAt < MODELS_DEV_CACHE_TTL) {
+    return modelsDevCache.data;
+  }
+
+  try {
+    const res = await fetch('https://models.dev/api.json');
+    const json = await res.json();
+    modelsDevCache = { data: json, fetchedAt: Date.now() };
+    return json;
+  } catch {
+    return {};
+  }
+}
+
+export function getModelLimit(provider: string, model: string): ModelLimit | null {
+  if (!modelsDevCache?.data?.[provider]?.models?.[model]?.limit) {
+    return null;
+  }
+  return modelsDevCache.data[provider].models[model].limit!;
+}
+
+export function hasReasoning(provider: string, model: string): boolean {
+  return modelsDevCache?.data?.[provider]?.models?.[model]?.reasoning ?? false;
+}
+
 function ensureModelsTable(): void {
   getDb().exec(`
     CREATE TABLE IF NOT EXISTS models_cache (
