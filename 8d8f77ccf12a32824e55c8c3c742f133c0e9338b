@@ -1,0 +1,29 @@
+.sisyphus/boulder.json
+  9580015eaeff2409 2-3,5-7
+src/hunt.ts
+  9580015eaeff2409 5
+src/proxy.ts
+  9580015eaeff2409 8
+src/models.ts
+  9580015eaeff2409 17-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "8d8f77ccf12a32824e55c8c3c742f133c0e9338b",
+  "prompts": {
+    "9580015eaeff2409": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_318a31923ffePTkzrLmJi9jbt7",
+        "model": "opencode/big-pickle"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 55,
+      "total_deletions": 3,
+      "accepted_lines": 59,
+      "overriden_lines": 0
+    }
+  }
+}
