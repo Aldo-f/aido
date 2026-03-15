@@ -1,0 +1,15 @@
+[Unit]
+Description=AIdo Proxy + Hunt - API key rotation proxy with automatic key hunting
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={AIDO_PATH}
+ExecStart={AIDO_PATH}/contrib/aido-wrapper.sh proxy
+ExecStartPost={AIDO_PATH}/contrib/aido-wrapper.sh hunt
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

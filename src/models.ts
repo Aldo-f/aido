@@ -1,10 +1,11 @@
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { getDb } from './db.js';
+import { mergeWithCapabilities, type ModelCapabilities } from './model-capabilities.js';
 
 export interface ModelInfo {
   id: string;
   owned_by?: string;
-  free?: boolean; // true if input/output price is 0 (where known)
+  capabilities?: ModelCapabilities;
 }
 
 // Providers with a models listing endpoint
@@ -95,12 +96,22 @@ export async function fetchModels(
   let models: ModelInfo[];
   if (json.models) {
     // Google: {models: [{name: "models/gemini-1.5-pro", ...}]} or Ollama Cloud
-    models = json.models.map((m) => ({
-      id: m.name?.replace('models/', '') ?? m.model ?? '?',
-      owned_by: provider,
-    }));
+    models = json.models.map((m) => {
+      const modelId = m.name?.replace('models/', '') ?? m.model ?? '?';
+      return {
+        id: modelId,
+        owned_by: provider,
+        capabilities: mergeWithCapabilities(modelId),
+      };
+    });
   } else {
-    models = (json.data ?? []).map((m) => ({ id: m.id, owned_by: m.owned_by }));
+    models = (json.data ?? []).map((m) => {
+      return {
+        id: m.id,
+        owned_by: m.owned_by,
+        capabilities: mergeWithCapabilities(m.id),
+      };
+    });
   }
 
   setCache(provider, keyHint, models);

@@ -5,6 +5,8 @@ import { logRequest } from './db.js';
 import { toOllamaBody, fromOllamaResponse, toOllamaPath } from './ollama.js';
 import { forwardAuto } from './auto.js';
 import { routeAidoModel } from './models/router.js';
+import { isPortInUse } from './utils/port-check.js';
+import { writePid, readPid, deletePid, isStale } from './daemon.js';
 
 const DEFAULT_PROVIDER: Provider =
   (process.env.DEFAULT_PROVIDER as Provider) ?? 'zen';
@@ -117,6 +119,14 @@ async function forwardRequest(
 export function createProxyServer(): http.Server {
   return http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
+    const pathname = url.pathname;
+
+    // Health check endpoint
+    if (pathname === '/health' && req.method === 'GET') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', version: '1.0.0' }));
+      return;
+    }
 
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -133,9 +143,32 @@ export function createProxyServer(): http.Server {
   });
 }
 
-export function startProxy(): void {
+export async function startProxy(): Promise<void> {
+  if (await isPortInUse(PORT)) {
+    const existing = readPid();
+    if (existing && !isStale()) {
+      console.error(`[aido-proxy] Already running on port ${PORT} (PID: ${existing.pid})`);
+      process.exit(1);
+    }
+    console.log(`[aido-proxy] Stale PID file found, removing...`);
+    deletePid();
+  }
+
   const server = createProxyServer();
+  
+  const cleanup = () => {
+    console.log('[aido-proxy] Shutting down...');
+    deletePid();
+    server.close(() => {
+      process.exit(0);
+    });
+  };
+  
+  process.on('SIGTERM', cleanup);
+  process.on('SIGINT', cleanup);
+  
   server.listen(PORT, () => {
+    writePid(PORT);
     console.log(`[aido-proxy] Listening on http://localhost:${PORT}`);
     console.log(`[aido-proxy] Routing based on model name in request body:`);
     console.log(`             /v1/chat/completions + model: "aido/auto"       → auto`);

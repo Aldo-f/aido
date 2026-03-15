@@ -23,6 +23,14 @@ export function getDb(dbPath = DB_PATH): DatabaseSync {
       status    INTEGER NOT NULL,
       ts        INTEGER NOT NULL DEFAULT (unixepoch())
     );
+    CREATE TABLE IF NOT EXISTS searched_sources (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_url  TEXT    NOT NULL UNIQUE,
+      query       TEXT,
+      searched_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      keys_found  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_searched_at ON searched_sources(searched_at);
   `);
   return _db;
 }
@@ -82,4 +90,42 @@ export function getRateLimitedKeys(): Array<{ key: string; provider: string; lim
   return db
     .prepare('SELECT key, provider, limited_until FROM rate_limits WHERE limited_until > ?')
     .all(Date.now()) as Array<{ key: string; provider: string; limited_until: number }>;
+}
+
+export function markSourceSearched(url: string, query: string, keysFound: number): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO searched_sources (source_url, query, keys_found)
+    VALUES (?, ?, ?)
+    ON CONFLICT(source_url) DO UPDATE SET
+      searched_at = unixepoch(),
+      keys_found = excluded.keys_found
+  `).run(url, query, keysFound);
+}
+
+export function isSourceSearchedRecently(url: string, hoursOld = 24): boolean {
+  const db = getDb();
+  const cutoff = Date.now() - hoursOld * 60 * 60 * 1000;
+  const row = db
+    .prepare('SELECT searched_at FROM searched_sources WHERE source_url = ? AND searched_at * 1000 > ?')
+    .get(url, cutoff) as { searched_at: number } | undefined;
+  return !!row;
+}
+
+export function getRecentlySearchedUrls(hoursOld = 24): Set<string> {
+  const db = getDb();
+  const cutoff = Date.now() - hoursOld * 60 * 60 * 1000;
+  const rows = db
+    .prepare('SELECT source_url FROM searched_sources WHERE searched_at * 1000 > ?')
+    .all(cutoff) as Array<{ source_url: string }>;
+  return new Set(rows.map(r => r.source_url));
+}
+
+export function cleanOldSearchedSources(daysOld = 7): number {
+  const db = getDb();
+  const cutoff = Date.now() - daysOld * 24 * 60 * 60 * 1000;
+  const result = db
+    .prepare('DELETE FROM searched_sources WHERE searched_at * 1000 < ?')
+    .run(cutoff);
+  return Number(result.changes);
 }

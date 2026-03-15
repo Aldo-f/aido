@@ -49,6 +49,14 @@ source ~/.bashrc
 fish_add_path ~/.local/bin
 ```
 
+**Option C: with auto-start on boot** (Linux with systemd)
+```bash
+npm run install:local
+npm run install:systemd
+systemctl --user enable aido
+systemctl --user start aido
+```
+
 ### Step 3 — Verify
 
 ```bash
@@ -196,6 +204,85 @@ aido status
 #   zen          ...gooTF  (until 14:30:00)
 ```
 
+### `aido stop`
+
+Stops the running proxy server.
+
+```bash
+aido stop
+```
+
+### `aido hunt`
+
+Searches the internet for leaked API keys and validates them automatically.
+
+```bash
+aido hunt                    # Search for keys (default: 3 valid keys, 60s timeout)
+aido hunt --limit 5          # Stop after 5 valid keys
+aido hunt --timeout 120      # Search for 2 minutes
+aido hunt --provider zen     # Only search for Zen keys
+aido hunt --provider anthropic  # Only search for Anthropic keys
+```
+
+#### How it works
+
+1. **Web Search** — Uses Exa API to search for potential API keys in:
+   - GitHub repositories and gists
+   - Stack Overflow posts
+   - Reddit discussions
+   - Code sharing sites
+   - Various web pages
+
+2. **Key Extraction** — Extracts patterns matching `sk-` prefixed keys
+
+3. **Filtering** — Filters out placeholder/fake keys like:
+   - `your-key-here`, `xxx`, `your_api_key`
+   - Keys that are too short or obviously test keys
+
+4. **Validation** — Validates each key against the provider API
+
+5. **Deduplication** — Tracks searched sources in SQLite, won't scan same URL twice within 24 hours
+
+6. **Auto-add** — Valid keys are automatically added to your configuration
+
+#### Daemon Mode
+
+The hunt runs in daemon mode by default — it continuously searches in the background:
+```bash
+aido hunt --daemon           # Run continuously in background (default)
+aido hunt --daemon=false     # Run once and exit
+```
+
+#### Requirements
+
+- **EXA_API_KEY** — Get one at https://exa.ai (free tier available)
+- **GITHUB_TOKEN** — For cloning private repositories (optional)
+
+Add to `.env`:
+```
+EXA_API_KEY=your-exa-api-key
+GITHUB_TOKEN=ghp_xxx  # Optional: for private repo scanning
+```
+
+---
+
+### `aido key:validate <key>`
+
+Validates if an API key works.
+
+```bash
+aido key:validate sk-xxx...
+aido key:validate sk-xxx... --provider zen
+```
+
+### `aido clear`
+
+Clears all rate limits, making all keys available again.
+
+```bash
+aido clear
+```
+
 ---
 
 ## How rotation works
@@ -217,6 +304,54 @@ aido status
 | `sk-` + shorter      | OpenAI     |
 | `gsk_...`            | Groq       |
 | `AIza...`            | Google     |
+
+---
+
+## Auto-start on boot (systemd)
+
+Run the proxy automatically when you log in using systemd user services.
+
+### Install
+
+```bash
+npm run install:systemd
+```
+
+This creates a systemd service at `~/.config/systemd/user/aido.service`.
+
+### Enable and start
+
+```bash
+systemctl --user enable aido
+systemctl --user start aido
+```
+
+### Check status
+
+```bash
+systemctl --user status aido
+```
+
+### View logs
+
+```bash
+journalctl --user -u aido -f
+```
+
+### Stop and disable
+
+```bash
+systemctl --user stop aido
+systemctl --user disable aido
+```
+
+### Uninstall
+
+```bash
+npm run uninstall:systemd
+```
+
+> **Note:** This only works on Linux systems with systemd. For macOS, use launchd (not included).
 
 ---
 

@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { fetchModels, type ModelInfo } from './models.js';
+import { loadKeysForProvider } from './rotator.js';
+import { mergeWithCapabilities } from './model-capabilities.js';
 
 const PROXY_BASE = 'http://localhost:4141';
 
@@ -100,31 +103,46 @@ async function launchOpenCode(port: number): Promise<void> {
     }
   }
 
-  // Fetch local Ollama models dynamically
-  const localModels = await fetchLocalOllamaModels();
-
   // Build all models with full aido/ prefix
-  const allModels: Record<string, { name: string }> = {};
+  const allModels: Record<string, { name: string; context?: number; input?: number; output?: number; allows?: string[] }> = {};
 
   // Meta models first
-  allModels['aido/auto'] = { name: '⚡ Auto (best available)' };
-  allModels['aido/cloud'] = { name: '☁️ Cloud Auto' };
-  allModels['aido/local'] = { name: '🏠 Local Ollama Auto' };
+  allModels['aido/auto'] = { name: '⚡ Auto (best available)', context: 200000, input: 200000, output: 64000, allows: ['reasoning', 'text'] };
+  allModels['aido/cloud'] = { name: '☁️ Cloud Auto', context: 200000, input: 200000, output: 64000, allows: ['reasoning', 'text'] };
+  allModels['aido/local'] = { name: '🏠 Local Ollama Auto', context: 200000, input: 200000, output: 64000, allows: ['text'] };
 
-  // Zen free models
-  allModels['aido/zen/big-pickle'] = { name: 'Big Pickle (Free)' };
-  allModels['aido/zen/mimo-v2-flash-free'] = { name: 'MiMo V2 Flash (Free)' };
-  allModels['aido/zen/nemotron-3-super-free'] = { name: 'Nemotron 3 Super (Free)' };
-  allModels['aido/zen/minimax-m2.5-free'] = { name: 'MiniMax M2.5 (Free)' };
+  // Fetch API models and merge with capabilities
+  const apiModels: Array<ModelInfo & { _provider?: string }> = [];
+  for (const provider of ['zen', 'groq', 'openai'] as const) {
+    const keys = loadKeysForProvider(provider);
+    if (keys.length > 0) {
+      try {
+        const models = await fetchModels(provider, keys[0], false);
+        for (const m of models) {
+          apiModels.push({ ...m, _provider: provider });
+        }
+      } catch {
+        // Skip if API fails
+      }
+    }
+  }
 
-  // Ollama Cloud models
-  allModels['aido/ollama/glm-5:cloud'] = { name: 'GLM-5 Cloud' };
-  allModels['aido/ollama/kimi-k2.5:cloud'] = { name: 'Kimi K2.5 Cloud' };
-  allModels['aido/ollama/minimax-m2.5:cloud'] = { name: 'MiniMax M2.5 Cloud' };
-
-  // Local Ollama models
-  for (const [model, info] of Object.entries(localModels)) {
-    allModels[`aido/local/${model}`] = { name: info.name };
+  // Add models from API with capabilities
+  for (const model of apiModels) {
+    const caps = model.capabilities ?? mergeWithCapabilities(model.id);
+    const provider = model._provider ?? 'zen';
+    
+    const modelKey = provider === 'ollama' 
+      ? `aido/ollama/${model.id}`
+      : `aido/${provider}/${model.id}`;
+    
+    allModels[modelKey] = {
+      name: model.id,
+      context: caps.context,
+      input: caps.input,
+      output: caps.output,
+      allows: caps.allows,
+    };
   }
 
   // Single provider with all models

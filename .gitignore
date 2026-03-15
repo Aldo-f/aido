@@ -7,6 +7,8 @@ logs/
 aido.db
 aido.db-shm
 aido.db-wal
+.aido.pid
+.aido-hunt.pid
 
 # Build outputs
 site/

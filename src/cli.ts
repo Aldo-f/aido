@@ -9,6 +9,8 @@ import { launch } from './launch.js';
 import { getRateLimitedKeys, clearExpiredLimits, clearAllLimits } from './db.js';
 import { showModels } from './models.js';
 import { loadKeysForProvider } from './rotator.js';
+import { readPid, deletePid, isStale } from './daemon.js';
+import { huntKeys, validateKey, startHuntDaemon, isHuntRunning, readHuntPid, deleteHuntPid } from './hunt.js';
 
 const program = new Command();
 
@@ -78,8 +80,8 @@ program
 program
   .command('proxy')
   .description('Start the proxy server (default port 4141)')
-  .action(() => {
-    startProxy();
+  .action(async () => {
+    await startProxy();
   });
 
 // ─── launch ─────────────────────────────────────────────────────────────────
@@ -132,6 +134,92 @@ program
   .action(() => {
     const cleared = clearAllLimits();
     console.log(`[clear] Cleared ${cleared} rate limit${cleared !== 1 ? 's' : ''}.`);
+  });
+
+// ─── stop ─────────────────────────────────────────────────────────────────
+program
+  .command('stop')
+  .description('Stop the running proxy server')
+  .action(() => {
+    const pidData = readPid();
+    if (!pidData) {
+      console.log('[stop] No proxy running (no PID file found)');
+      return;
+    }
+    if (isStale()) {
+      console.log('[stop] Stale PID file found, removing...');
+      deletePid();
+      return;
+    }
+    try {
+      process.kill(pidData.pid, 'SIGTERM');
+      console.log(`[stop] Sent SIGTERM to proxy (PID: ${pidData.pid})`);
+      deletePid();
+    } catch (err) {
+      console.error('[stop] Failed to stop proxy:', (err as Error).message);
+    }
+  });
+
+// ─── hunt ─────────────────────────────────────────────────────────────────
+program
+  .command('hunt')
+  .description('Search for free API keys (requires manual entry for security)')
+  .option('-l, --limit <number>', 'Stop after N keys found', '3')
+  .option('-t, --timeout <seconds>', 'Max search time in seconds', '60')
+  .option('-p, --provider <provider>', 'Search only specific provider')
+  .option('-d, --daemon', 'Run continuously in background', true)
+  .option('-i, --interval <seconds>', 'Interval between rounds in daemon mode', '60')
+  .action(async (opts: { limit: string; timeout: string; provider?: string; daemon: boolean; interval: string }) => {
+    if (opts.daemon) {
+      await startHuntDaemon({
+        limit: parseInt(opts.limit, 10),
+        timeout: parseInt(opts.timeout, 10),
+        provider: opts.provider,
+        continuous: true,
+        interval: parseInt(opts.interval, 10),
+      });
+    } else {
+      await huntKeys({
+        limit: parseInt(opts.limit, 10),
+        timeout: parseInt(opts.timeout, 10),
+        provider: opts.provider,
+      });
+    }
+  });
+
+// ─── hunt:stop ───────────────────────────────────────────────────────────────
+program
+  .command('hunt:stop')
+  .description('Stop the running hunt daemon')
+  .action(() => {
+    const pid = readHuntPid();
+    if (!pid) {
+      console.log('[hunt] No daemon running (no PID file found)');
+      return;
+    }
+    try {
+      process.kill(pid, 'SIGTERM');
+      console.log(`[hunt] Stopped daemon (PID: ${pid})`);
+      deleteHuntPid();
+    } catch (err) {
+      console.log('[hunt] Daemon not running, cleaning up stale PID...');
+      deleteHuntPid();
+    }
+  });
+
+// ─── key validate ────────────────────────────────────────────────────────
+program
+  .command('key:validate')
+  .description('Validate an API key')
+  .argument('<key>', 'API key to validate')
+  .option('-p, --provider <provider>', 'Specific provider to test')
+  .action(async (key: string, opts: { provider?: string }) => {
+    const valid = await validateKey(key, opts.provider);
+    if (valid) {
+      console.log('✓ Key is valid');
+    } else {
+      console.log('✗ Key is invalid');
+    }
   });
 
 program.parse();

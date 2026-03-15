@@ -9,15 +9,19 @@
   "scripts": {
     "install:global": "chmod +x aido && sudo cp aido /usr/local/bin/aido",
     "install:local": "chmod +x aido && mkdir -p ~/.local/bin && ln -sf $(pwd)/aido ~/.local/bin/aido",
+    "install:systemd": "chmod +x aido && mkdir -p ~/.config/systemd/user && AIDO_PATH=\"$(pwd)\" USER=\"$(whoami)\" sh -c 'sed -e \"s|{AIDO_PATH}|${AIDO_PATH}|g\" -e \"s|{USER}|${USER}|g\" contrib/aido.service.template > ~/.config/systemd/user/aido.service' && systemctl --user daemon-reload",
+    "uninstall:systemd": "systemctl --user stop aido || true && rm -f ~/.config/systemd/user/aido.service && systemctl --user daemon-reload",
     "test": "node --experimental-sqlite node_modules/.bin/vitest run",
     "test:watch": "node --experimental-sqlite node_modules/.bin/vitest"
   },
   "dependencies": {
     "commander": "^12.1.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "exa-js": "^2.8.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "gitleaks": "^1.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.4.5",
     "vitest": "^4.0.18"
