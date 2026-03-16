@@ -1,0 +1,29 @@
+docs/api.md
+  9580015eaeff2409 90-117,139-172
+docs/index.md
+  9580015eaeff2409 45-47
+README.md
+  9580015eaeff2409 156-178,238-245
+docs/architecture.md
+  9580015eaeff2409 23-26,111-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "8fc98f5eb5b2f135fde872fd1c1a0888a78dfab8",
+  "prompts": {
+    "9580015eaeff2409": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_318a31923ffePTkzrLmJi9jbt7",
+        "model": "opencode/big-pickle"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 126,
+      "total_deletions": 3,
+      "accepted_lines": 126,
+      "overriden_lines": 0
+    }
+  }
+}
