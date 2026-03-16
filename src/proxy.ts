@@ -79,7 +79,10 @@ async function forwardRequest(
   const config = PROVIDER_CONFIGS[provider];
   const isOllama = config.nativeFormat === true;
 
-  const upstreamPath = isOllama ? toOllamaPath(path) : path;
+  let upstreamPath = isOllama ? toOllamaPath(path) : path;
+  if (config.baseUrl.endsWith('/v1') && upstreamPath.startsWith('/v1')) {
+    upstreamPath = upstreamPath.slice(3);
+  }
   const upstreamBody = isOllama && method !== 'GET' ? toOllamaBody(body) : body;
   const url = `${config.baseUrl}${upstreamPath}`;
 
