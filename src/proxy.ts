@@ -19,10 +19,18 @@ function enrichModelsWithCapabilities(responseBody: string): string {
     const json = JSON.parse(responseBody);
     const models = json.data ?? [];
     if (Array.isArray(models) && models.length > 0) {
-      json.data = models.map((m: { id: string }) => ({
-        ...m,
-        capabilities: mergeWithCapabilities(m.id),
-      }));
+      json.data = models.map((m: { id: string }) => {
+        const caps = mergeWithCapabilities(m.id);
+        return {
+          ...m,
+          owned_by: 'aido',
+          context: caps.context,
+          input: caps.input,
+          output: caps.output,
+          allows: caps.allows,
+          capabilities: caps,
+        };
+      });
       return JSON.stringify(json);
     }
     return responseBody;

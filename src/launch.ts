@@ -104,12 +104,12 @@ async function launchOpenCode(port: number): Promise<void> {
   }
 
   // Build all models with full aido/ prefix
-  const allModels: Record<string, { name: string; context?: number; input?: number; output?: number; allows?: string[] }> = {};
+  const allModels: Record<string, { name: string; limit?: { context?: number; input?: number; output?: number }; allows?: string[] }> = {};
 
   // Meta models first
-  allModels['aido/auto'] = { name: '⚡ Auto (best available)', context: 200000, input: 200000, output: 64000, allows: ['reasoning', 'text'] };
-  allModels['aido/cloud'] = { name: '☁️ Cloud Auto', context: 200000, input: 200000, output: 64000, allows: ['reasoning', 'text'] };
-  allModels['aido/local'] = { name: '🏠 Local Ollama Auto', context: 200000, input: 200000, output: 64000, allows: ['text'] };
+  allModels['aido/auto'] = { name: '⚡ Auto (best available)', limit: { context: 200000, input: 200000, output: 64000 }, allows: ['reasoning', 'text'] };
+  allModels['aido/cloud'] = { name: '☁️ Cloud Auto', limit: { context: 200000, input: 200000, output: 64000 }, allows: ['reasoning', 'text'] };
+  allModels['aido/local'] = { name: '🏠 Local Ollama Auto', limit: { context: 200000, input: 200000, output: 64000 }, allows: ['text'] };
 
   // Fetch API models and merge with capabilities
   const apiModels: Array<ModelInfo & { _provider?: string }> = [];
@@ -138,9 +138,11 @@ async function launchOpenCode(port: number): Promise<void> {
     
     allModels[modelKey] = {
       name: model.id,
-      context: caps.context,
-      input: caps.input,
-      output: caps.output,
+      limit: {
+        context: caps.context,
+        input: caps.input,
+        output: caps.output,
+      },
       allows: caps.allows,
     };
   }
