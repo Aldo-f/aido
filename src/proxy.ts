@@ -19,9 +19,12 @@ function enrichModelsWithCapabilities(responseBody: string): string {
     const json = JSON.parse(responseBody);
     const models = json.data ?? [];
     if (Array.isArray(models) && models.length > 0) {
-      json.data = models.map((m: { id: string }) => {
+      const enrichedModels: typeof models = [];
+      
+      for (const m of models) {
         const caps = mergeWithCapabilities(m.id);
-        return {
+        
+        enrichedModels.push({
           ...m,
           owned_by: 'aido',
           context: caps.context,
@@ -29,8 +32,22 @@ function enrichModelsWithCapabilities(responseBody: string): string {
           output: caps.output,
           allows: caps.allows,
           capabilities: caps,
-        };
-      });
+        });
+        
+        const prefixedId = `aido/zen/${m.id}`;
+        enrichedModels.push({
+          ...m,
+          id: prefixedId,
+          owned_by: 'aido',
+          context: caps.context,
+          input: caps.input,
+          output: caps.output,
+          allows: caps.allows,
+          capabilities: caps,
+        });
+      }
+      
+      json.data = enrichedModels;
       return JSON.stringify(json);
     }
     return responseBody;
