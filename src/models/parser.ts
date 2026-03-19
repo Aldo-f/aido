@@ -9,7 +9,7 @@ export interface ParsedAidoModel {
 }
 
 const KNOWN_CATEGORIES = ['auto', 'cloud', 'local'] as const;
-const KNOWN_PROVIDERS: Provider[] = ['zen', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local'];
+const KNOWN_PROVIDERS: Provider[] = ['zen', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local', 'openrouter'];
 
 export function parseAidoModel(path: string): ParsedAidoModel {
   if (!path || typeof path !== 'string') {
