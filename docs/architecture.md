@@ -15,11 +15,12 @@ AIdo is a local proxy server that sits between your applications and LLM provide
 | File | Purpose |
 |------|---------|
 | `src/proxy.ts` | Main proxy server - handles HTTP requests |
-| `src/auto.ts` | Auto-routing logic - selects provider and model |
+| `src/auto.ts` | Auto-routing logic - forwardAuto(), forwardAutoFree() |
 | `src/models/router.ts` | Model name parsing and routing |
-| `src/rotator.ts` | Key rotation logic |
+| `src/rotator.ts` | Key rotation with model-specific rate limiting |
 | `src/detector.ts` | Provider detection from key format |
-| `src/db.ts` | SQLite database for rate limit tracking |
+| `src/db.ts` | SQLite operations (WAL mode), models table, model_limits table |
+| `src/free-discovery.ts` | Free model identification logic for each provider |
 | `src/hunt.ts` | Hunt daemon - searches for leaked API keys |
 | `src/hunt-gitleaks.ts` | Gitleaks integration for repo scanning |
 | `src/model-capabilities.ts` | Model capabilities database |
@@ -37,20 +38,40 @@ proxy.ts (resolveProvider)
 router.ts (routeAidoModel)
     │
     ▼
-auto.ts (forwardAuto)
+auto.ts (forwardAuto or forwardAutoFree)
     │
-    ├──► Try Provider 1
-    │       │
-    │       └──► Success → Return response
-    │       │
-    │       └──► 429 → Mark rate limited, try next
-    │       │
-    │       └──► Error → Try next
+    ├──► forwardAuto (provider-specific)
+    │       ├──► Try free models for provider
+    │       │       └──► Success → Return response
+    │       │       └──► 429 → Mark rate limited, try next
+    │       └──► Fallback to DEFAULT_MODELS[provider]
     │
-    ├──► Try Provider 2 (if Provider 1 failed)
+    ├──► forwardAutoFree (cross-provider)
+    │       ├──► Try free models for each provider
+    │       │       └──► Success → Return response
+    │       │       └──► 429 → Mark rate limited, try next
+    │       └──► Fallback to forwardAuto
     │
     └──► ... (until success or all exhausted)
 ```
+
+### Free Model Discovery
+
+1. **Identification**: `identifyFreeModels()` uses provider-specific logic to determine if a model is free
+2. **Caching**: Discovered free models saved to `models` table with `isFree` flag (1-hour TTL)
+3. **Retrieval**: `getFreeModels()` queries `models` table with `WHERE isFree = 1`
+4. **Usage**: `aido run` tries free models first, falls back to paid models
+
+### Database Schema
+
+**Models Table** (renamed from `free_models`):
+- Stores ALL models (free and paid) with `isFree` flag
+- Enables filtering by `isFree = 1` to get only free models
+- Primary key: `(provider, model_id)`
+
+**Model Limits Table** (NEW):
+- Tracks rate limits per model, not just per key
+- Primary key: `(provider, model_id)`
 
 ## Provider Selection
 
@@ -58,9 +79,16 @@ auto.ts (forwardAuto)
 
 AIdo uses priority chains to determine which providers to try:
 
-- **Auto** (`aido/auto`): Zen → Ollama-Local → Ollama → Groq → OpenAI → Anthropic
-- **Cloud** (`aido/cloud`): Zen → Groq → OpenAI → Anthropic → Ollama
+- **Auto** (`aido/auto`): Zen → Ollama-Local → Ollama → Groq → OpenAI → Anthropic → OpenRouter
+- **Cloud** (`aido/cloud`): Zen → Groq → OpenAI → Anthropic → Ollama → OpenRouter
 - **Local** (`aido/local`): Ollama-Local
+
+### Free Model Priority
+
+When using `--auto-free` flag or free model discovery:
+1. Query all providers for free models
+2. Try free models across all providers before falling back to paid models
+3. Skip rate-limited models using `model_limits` table
 
 ### Model Naming
 
@@ -93,6 +121,7 @@ aido/ollama/qwen3:8b   → Ollama Cloud, specific model
 | `gsk_...` | Groq |
 | `AIza...` | Google |
 | 32 hex + `.` + alphanumeric | Ollama |
+| `sk-or-v1-...` | OpenRouter |
 
 ## Configuration
 
@@ -105,9 +134,10 @@ aido/ollama/qwen3:8b   → Ollama Cloud, specific model
 | `ANTHROPIC_KEYS` | Comma-separated Anthropic API keys |
 | `GROQ_KEYS` | Comma-separated Groq API keys |
 | `OLLAMA_KEYS` | Comma-separated Ollama API keys |
+| `OPENROUTER_KEYS` | Comma-separated OpenRouter API keys |
 | `OLLAMA_HOST` | Ollama host URL (default: http://localhost:11434) |
 | `PROXY_PORT` | Proxy port (default: 4141) |
-| `DB_PATH` | SQLite database path |
+| `DB_PATH` | SQLite database path (default: aido.db) |
 
 ## Model Capabilities
 

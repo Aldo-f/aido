@@ -5,10 +5,12 @@ AIdo is a local API key rotation proxy for LLM providers. It automatically rotat
 ## Features
 
 - **Automatic Key Rotation**: Automatically switches to the next available key when rate limited
-- **Multiple Providers**: Supports Zen, OpenAI, Anthropic, Groq, Google, and Ollama
+- **Free Model Discovery**: Automatically discovers and uses free-tier models across providers
+- **Multiple Providers**: Supports Zen, OpenAI, Anthropic, Groq, Google, Ollama, and OpenRouter
 - **Cloud & Local Models**: Auto-selects best available model based on category
 - **Model Routing**: Uses model names like `aido/zen/big-pickle` to route to specific providers
-- **SQLite Persistence**: Tracks rate-limited keys and their cooldown times
+- **SQLite Persistence**: Tracks rate-limited keys and their cooldown times with WAL mode for concurrent access
+- **Model-Specific Rate Limiting**: Tracks rate limits per model, not just per key
 
 ## Quick Start
 
