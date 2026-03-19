@@ -21,14 +21,6 @@ const DEFAULT_MODELS: Record<Provider, string> = {
   openrouter: 'nvidia/nemotron-3-super-120b-a12b:free',
 };
 
-// All known free models on OpenCode Zen (from /zen/v1/models)
-export const ZEN_FREE_MODELS = [
-  'big-pickle',
-  'mimo-v2-flash-free',
-  'nemotron-3-super-free',
-  'minimax-m2.5-free',
-] as const;
-
 export async function run(prompt: string, opts: RunOptions): Promise<void> {
   const { provider, model, stream = false } = opts;
 
