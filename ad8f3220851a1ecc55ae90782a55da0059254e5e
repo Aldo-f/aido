@@ -1,0 +1,29 @@
+src/cli.ts
+  aab0e77a2f60743d 52-58,63
+src/run.ts
+  aab0e77a2f60743d 3,11,26,61-68,70-86,89-92,94,99-105,107,114-117,121-126,128-131,133-156,158-164,166,169-170,172,174
+src/db.ts
+  aab0e77a2f60743d 195,204,206,224-260
+PROJECT.md
+  aab0e77a2f60743d 42-48,54,57-58,61,63-71,74-82,329-332,335,368-375,377-387,389,391-395,397-401,437-441,443-444,450-452,464-467,718-720,724-725,745-746,754-756,761-762
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "ad8f3220851a1ecc55ae90782a55da0059254e5e",
+  "prompts": {
+    "aab0e77a2f60743d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
+        "model": "opencode/mimo-v2-flash-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 277,
+      "total_deletions": 161,
+      "accepted_lines": 239,
+      "overriden_lines": 0
+    }
+  }
+}
