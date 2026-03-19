@@ -201,7 +201,7 @@ export interface FreeModel {
   expiresAt: number;
 }
 
-export function saveFreeModels(provider: string, models: FreeModel[]): void {
+export function saveModels(provider: string, models: FreeModel[]): void {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT INTO models (provider, model_id, model_name, isFree, discovered_at, expires_at)

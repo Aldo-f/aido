@@ -3,7 +3,7 @@
 
 import { PROVIDER_CONFIGS, type Provider } from './detector';
 import { loadKeysForProvider } from './rotator';
-import { getFreeModels, invalidateCache, saveFreeModels } from './db';
+import { getFreeModels, invalidateCache, saveModels } from './db';
 
 /**
  * Represents a discovered free model
@@ -132,7 +132,7 @@ export async function discoverFreeModels(provider: Provider): Promise<FreeModel[
   
   // Save to cache
   if (freeModels.length > 0) {
-    saveFreeModels(provider, freeModels);
+    saveModels(provider, freeModels);
   }
   
   return freeModels;
