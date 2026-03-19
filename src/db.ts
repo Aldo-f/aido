@@ -9,6 +9,7 @@ let _db: DatabaseSync | null = null;
 export function getDb(dbPath = DB_PATH): DatabaseSync {
   if (_db) return _db;
   _db = new DatabaseSync(dbPath);
+  _db.exec('PRAGMA journal_mode=WAL;');
   _db.exec(`
     CREATE TABLE IF NOT EXISTS rate_limits (
       key         TEXT    PRIMARY KEY,
@@ -40,6 +41,12 @@ export function getDb(dbPath = DB_PATH): DatabaseSync {
       PRIMARY KEY (provider, model_id)
     );
     CREATE INDEX IF NOT EXISTS idx_free_models_expires ON free_models(expires_at);
+    CREATE TABLE IF NOT EXISTS model_limits (
+      provider      TEXT    NOT NULL,
+      model_id      TEXT    NOT NULL,
+      limited_until INTEGER NOT NULL,
+      PRIMARY KEY (provider, model_id)
+    );
   `);
   return _db;
 }
@@ -76,10 +83,55 @@ export function isRateLimited(key: string): boolean {
 
 export function clearExpiredLimits(): number {
   const db = getDb();
-  const result = db
+  const now = Date.now();
+  const result1 = db
     .prepare('DELETE FROM rate_limits WHERE limited_until <= ?')
-    .run(Date.now());
-  return Number(result.changes);
+    .run(now);
+  const result2 = db
+    .prepare('DELETE FROM model_limits WHERE limited_until <= ?')
+    .run(now);
+  return Number(result1.changes) + Number(result2.changes);
+}
+
+/** Mark a model as rate limited */
+export function markModelRateLimited(
+  provider: string,
+  modelId: string,
+  cooldownSeconds = 3600,
+): void {
+  const db = getDb();
+  const until = Date.now() + cooldownSeconds * 1000;
+  db.prepare(`
+    INSERT INTO model_limits (provider, model_id, limited_until)
+    VALUES (?, ?, ?)
+    ON CONFLICT(provider, model_id) DO UPDATE SET
+      limited_until = excluded.limited_until
+  `).run(provider, modelId, until);
+}
+
+/** Check if a model is rate limited */
+export function isModelRateLimited(provider: string, modelId: string): boolean {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT limited_until FROM model_limits WHERE provider = ? AND model_id = ?')
+    .get(provider, modelId) as { limited_until: number } | undefined;
+  if (!row) return false;
+  return row.limited_until > Date.now();
+}
+
+/** Clear model rate limit */
+export function clearModelRateLimit(provider: string, modelId: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM model_limits WHERE provider = ? AND model_id = ?')
+    .run(provider, modelId);
+}
+
+/** Get all rate-limited models */
+export function getRateLimitedModels(): Array<{ provider: string; model_id: string; limited_until: number }> {
+  const db = getDb();
+  return db
+    .prepare('SELECT provider, model_id, limited_until FROM model_limits WHERE limited_until > ?')
+    .all(Date.now()) as Array<{ provider: string; model_id: string; limited_until: number }>;
 }
 
 export function clearAllLimits(): number {
