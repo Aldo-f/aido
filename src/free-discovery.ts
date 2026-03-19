@@ -1,9 +1,9 @@
 // Free model discovery module
 // Automatically queries provider APIs to discover available free models
 
-import { PROVIDER_CONFIGS, type Provider } from './detector.ts';
-import { loadKeysForProvider } from './rotator.ts';
-import { getFreeModels, saveFreeModels } from './db.ts';
+import { PROVIDER_CONFIGS, type Provider } from './detector';
+import { loadKeysForProvider } from './rotator';
+import { getFreeModels, invalidateCache, saveFreeModels } from './db';
 
 /**
  * Represents a discovered free model
@@ -79,19 +79,34 @@ export async function fetchModels(provider: Provider): Promise<RawModel[]> {
   const baseUrl = config.baseUrl;
   const modelsUrl = `${baseUrl}/models`;
 
-  const response = await fetch(modelsUrl, {
-    method: 'GET',
-    headers,
-  });
+  // AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch models from ${provider}: ${response.status} ${response.statusText}`
-    );
+  try {
+    const response = await fetch(modelsUrl, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch models from ${provider}: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const data = (await response.json()) as ProviderModels;
+    return data.data ?? [];
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Timeout fetching models from ${provider} after 30 seconds`);
+    }
+    throw error;
   }
-
-  const data = (await response.json()) as ProviderModels;
-  return data.data ?? [];
 }
 
 /**
@@ -128,8 +143,23 @@ export async function discoverFreeModels(provider: Provider): Promise<FreeModel[
  * @returns Promise resolving to map of provider -> free models
  */
 export async function discoverAllFreeModels(): Promise<Map<Provider, FreeModel[]>> {
-  // This will be implemented in Task 6
-  return new Map();
+  const providers = Object.keys(PROVIDER_CONFIGS) as Provider[];
+  const configuredProviders = providers.filter(p => loadKeysForProvider(p).length > 0);
+
+  // Fetch models for all providers in parallel
+  const results = await Promise.all(
+    configuredProviders.map(async (provider) => {
+      try {
+        const freeModels = await discoverFreeModels(provider);
+        return [provider, freeModels] as const;
+      } catch (error) {
+        console.error(`Failed to discover free models for ${provider}: ${error}`);
+        return [provider, [] as FreeModel[]] as const;
+      }
+    })
+  );
+
+  return new Map(results);
 }
 
 /**
@@ -143,18 +173,52 @@ export function isCacheExpired(provider: Provider): boolean {
 }
 
 /**
+ * Track last refresh time per provider to avoid hammering APIs
+ */
+const lastRefreshTime = new Map<Provider, number>();
+
+/**
+ * Minimum interval between refreshes (30 minutes)
+ */
+const REFRESH_COOLDOWN_MS = 30 * 60 * 1000;
+
+/**
  * Manually refresh the free model cache for a provider
  * @param provider - The provider to refresh
  */
 export async function refreshFreeModelCache(provider: Provider): Promise<void> {
-  // This will be implemented in Task 6
+  // Check cooldown to avoid hammering provider APIs
+  const lastRefresh = lastRefreshTime.get(provider) ?? 0;
+  if (Date.now() - lastRefresh < REFRESH_COOLDOWN_MS) {
+    return; // Skip if refreshed recently
+  }
+
+  // Invalidate existing cache for this provider
+  invalidateCache(provider);
+
+  // Fetch fresh models (will bypass empty cache and call provider API)
+  await discoverFreeModels(provider);
+
+  // Update last refresh timestamp
+  lastRefreshTime.set(provider, Date.now());
 }
 
 /**
  * Manually refresh the free model cache for all configured providers
  */
 export async function refreshAllFreeModelCaches(): Promise<void> {
-  // This will be implemented in Task 6
+  const providers = Object.keys(PROVIDER_CONFIGS) as Provider[];
+  const configuredProviders = providers.filter(p => loadKeysForProvider(p).length > 0);
+
+  await Promise.all(
+    configuredProviders.map(async (provider) => {
+      try {
+        await refreshFreeModelCache(provider);
+      } catch {
+        console.error(`Failed to refresh cache for ${provider}`);
+      }
+    })
+  );
 }
 
 // ─── Free Model Identification Rules ───────────────────────────────────────────
@@ -183,75 +247,36 @@ const GROQ_FREE_PATTERNS = [
   /^qwen-/,
 ];
 
-function isZenFree(modelId: string): boolean {
-  return ZEN_SPECIAL_FREE_MODELS.has(modelId) || ZEN_FREE_PATTERN.test(modelId);
-}
+// Cache provider check functions for performance
+const PROVIDER_CHECKERS: Record<Provider, (modelId: string) => boolean> = {
+  zen: (modelId) => ZEN_SPECIAL_FREE_MODELS.has(modelId) || ZEN_FREE_PATTERN.test(modelId),
+  openrouter: (modelId) => OPENROUTER_FREE_PATTERN.test(modelId),
+  google: (modelId) => GOOGLE_FREE_PATTERNS.some(pattern => pattern.test(modelId)),
+  groq: (modelId) => GROQ_FREE_PATTERNS.some(pattern => pattern.test(modelId)),
+  'ollama-local': () => true, // Local Ollama is always free
+  ollama: () => false, // Ollama Cloud: unknown free status, default to false
+  openai: () => false, // OpenAI has no free tier
+  anthropic: () => false, // Anthropic has no free tier
+};
 
-function isOpenRouterFree(modelId: string): boolean {
-  return OPENROUTER_FREE_PATTERN.test(modelId);
-}
-
-function isGoogleFree(modelId: string): boolean {
-  return GOOGLE_FREE_PATTERNS.some(pattern => pattern.test(modelId));
-}
-
-function isGroqFree(modelId: string): boolean {
-  return GROQ_FREE_PATTERNS.some(pattern => pattern.test(modelId));
-}
+// Default cache duration (1 hour)
+const DEFAULT_CACHE_DURATION_MS = 60 * 60 * 1000;
 
 export function identifyFreeModels(provider: Provider, models: RawModel[]): FreeModel[] {
+  if (models.length === 0) {
+    return [];
+  }
+
   const now = Date.now();
-  const defaultCacheDuration = 60 * 60 * 1000;
+  const checker = PROVIDER_CHECKERS[provider] || (() => false);
+  const expiresAt = now + DEFAULT_CACHE_DURATION_MS;
 
-  return models.map(model => {
-    const modelId = model.id;
-    let isFree = false;
-
-    switch (provider) {
-      case 'zen':
-        isFree = isZenFree(modelId);
-        break;
-
-      case 'openrouter':
-        isFree = isOpenRouterFree(modelId);
-        break;
-
-      case 'google':
-        isFree = isGoogleFree(modelId);
-        break;
-
-      case 'groq':
-        isFree = isGroqFree(modelId);
-        break;
-
-      case 'ollama-local':
-        // Local Ollama is always free
-        isFree = true;
-        break;
-
-      case 'ollama':
-        // Ollama Cloud: unknown free status, default to false
-        isFree = false;
-        break;
-
-      case 'openai':
-      case 'anthropic':
-        // OpenAI and Anthropic have no free tier
-        isFree = false;
-        break;
-
-      default:
-        // Unknown provider, assume not free
-        isFree = false;
-    }
-
-    return {
-      id: modelId,
-      name: model.name ?? modelId,
-      provider,
-      isFree,
-      discoveredAt: now,
-      expiresAt: now + defaultCacheDuration,
-    };
-  });
+  return models.map(model => ({
+    id: model.id,
+    name: model.name ?? model.id,
+    provider,
+    isFree: checker(model.id),
+    discoveredAt: now,
+    expiresAt,
+  }));
 }

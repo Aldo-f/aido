@@ -32,15 +32,17 @@ export function getDb(dbPath = DB_PATH): DatabaseSync {
       keys_found  INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_searched_at ON searched_sources(searched_at);
-    CREATE TABLE IF NOT EXISTS free_models (
+    CREATE TABLE IF NOT EXISTS models (
       provider      TEXT    NOT NULL,
       model_id      TEXT    NOT NULL,
       model_name    TEXT    NOT NULL,
+      isFree        INTEGER NOT NULL DEFAULT 0,
       discovered_at INTEGER NOT NULL,
       expires_at    INTEGER NOT NULL,
       PRIMARY KEY (provider, model_id)
     );
-    CREATE INDEX IF NOT EXISTS idx_free_models_expires ON free_models(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_models_expires ON models(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_models_isFree ON models(isFree);
     CREATE TABLE IF NOT EXISTS model_limits (
       provider      TEXT    NOT NULL,
       model_id      TEXT    NOT NULL,
@@ -202,16 +204,18 @@ export interface FreeModel {
 export function saveFreeModels(provider: string, models: FreeModel[]): void {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO free_models (provider, model_id, model_name, discovered_at, expires_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO models (provider, model_id, model_name, isFree, discovered_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(provider, model_id) DO UPDATE SET
       model_name = excluded.model_name,
+      isFree = excluded.isFree,
       discovered_at = excluded.discovered_at,
       expires_at = excluded.expires_at
   `);
   
   for (const model of models) {
-    stmt.run(provider, model.id, model.name, model.discoveredAt, model.expiresAt);
+    const isFreeInt = model.isFree ? 1 : 0;
+    stmt.run(provider, model.id, model.name, isFreeInt, model.discoveredAt, model.expiresAt);
   }
 }
 
@@ -219,14 +223,14 @@ export function getFreeModels(provider: string): FreeModel[] {
   const db = getDb();
   const now = Date.now();
   const rows = db
-    .prepare('SELECT provider, model_id, model_name, discovered_at, expires_at FROM free_models WHERE provider = ? AND expires_at > ?')
-    .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; discovered_at: number; expires_at: number }>;
+    .prepare('SELECT provider, model_id, model_name, isFree, discovered_at, expires_at FROM models WHERE provider = ? AND expires_at > ? AND isFree = 1')
+    .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; isFree: number; discovered_at: number; expires_at: number }>;
   
   return rows.map(row => ({
     id: row.model_id,
     name: row.model_name,
     provider: row.provider,
-    isFree: true,
+    isFree: row.isFree === 1,
     discoveredAt: row.discovered_at,
     expiresAt: row.expires_at,
   }));
@@ -238,12 +242,12 @@ export function invalidateCache(provider?: string): number {
   
   if (provider) {
     const result = db
-      .prepare('DELETE FROM free_models WHERE provider = ? AND expires_at <= ?')
+      .prepare('DELETE FROM models WHERE provider = ? AND expires_at <= ?')
       .run(provider, now);
     return Number(result.changes);
   } else {
     const result = db
-      .prepare('DELETE FROM free_models WHERE expires_at <= ?')
+      .prepare('DELETE FROM models WHERE expires_at <= ?')
       .run(now);
     return Number(result.changes);
   }
