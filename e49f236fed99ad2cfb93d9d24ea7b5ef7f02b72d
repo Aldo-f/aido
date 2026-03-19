@@ -1,0 +1,27 @@
+docs/index.md
+  aab0e77a2f60743d 8-9,12-13
+docs/architecture.md
+  aab0e77a2f60743d 18,20,22-23,41,43-44,47,49-53,58-74,82-83,86-91,124,137,140
+AGENTS.md
+  aab0e77a2f60743d 3-4,11-17,22,25-26,28-29,31-34,46-47,55-56,59-61,76,83,88,91,96-120,126-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "e49f236fed99ad2cfb93d9d24ea7b5ef7f02b72d",
+  "prompts": {
+    "aab0e77a2f60743d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
+        "model": "opencode/mimo-v2-flash-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 105,
+      "total_deletions": 28,
+      "accepted_lines": 103,
+      "overriden_lines": 0
+    }
+  }
+}
