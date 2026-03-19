@@ -11,6 +11,7 @@ import { showModels } from './models.js';
 import { loadKeysForProvider } from './rotator.js';
 import { readPid, deletePid, isStale } from './daemon.js';
 import { huntKeys, validateKey, startHuntDaemon, isHuntRunning, readHuntPid, deleteHuntPid } from './hunt.js';
+import { forwardAutoFree } from './auto.js';
 
 const program = new Command();
 
@@ -48,12 +49,30 @@ program
   .option('-p, --provider <provider>', 'Provider to use (default: auto with fallback)', 'auto')
   .option('-m, --model <model>', 'Model to use (defaults to free tier)')
   .option('-s, --stream', 'Stream the response', false)
-  .action(async (prompt: string, opts: { provider: string; model?: string; stream: boolean }) => {
-    await run(prompt, {
-      provider: opts.provider as Provider,
-      model: opts.model,
-      stream: opts.stream,
-    });
+  .option('--auto-free', 'Use free models first before falling back to paid', true)
+  .option('--no-auto-free', 'Use paid models first before falling back to free', false)
+  .action(async (prompt: string, opts: { provider: string; model?: string; stream: boolean; autoFree: boolean; noAutoFree: boolean }) => {
+    const useAutoFree = opts.autoFree && !opts.noAutoFree;
+    if (useAutoFree) {
+      // Import forwardAutoFree here to avoid circular dependency issues
+      const { forwardAutoFree } = await import('./auto.js');
+      await forwardAutoFree(
+        `/v1/chat/completions`,
+        'POST',
+        JSON.stringify({
+          model: opts.model || undefined,
+          messages: [{ role: 'user', content: prompt }],
+          stream: opts.stream
+        }),
+        'auto'
+      );
+    } else {
+      await run(prompt, {
+        provider: opts.provider as Provider,
+        model: opts.model,
+        stream: opts.stream,
+      });
+    }
   });
 
 // ─── models ─────────────────────────────────────────────────────────────────
@@ -62,9 +81,9 @@ program
   .description('List available models for a provider (fetched with your key)')
   .option('--sync', 'Force refresh, ignore cache', false)
   .action(async (providerArg: string | undefined, opts: { sync: boolean }) => {
-    const providers: Provider[] = providerArg
-      ? [providerArg as Provider]
-      : ['zen', 'openai', 'google', 'groq', 'ollama', 'ollama-local'];
+const providers: Provider[] = providerArg
+       ? [providerArg as Provider]
+       : ['zen', 'openai', 'google', 'groq', 'ollama', 'ollama-local', 'openrouter'];
 
     for (const provider of providers) {
       const keys = loadKeysForProvider(provider);
@@ -105,7 +124,7 @@ program
     clearExpiredLimits();
 
     // Show configured providers
-    const providers: Provider[] = ['zen', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local'];
+    const providers: Provider[] = ['zen', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local', 'openrouter'];
     console.log('Configured providers:\n');
     for (const p of providers) {
       const keys = loadKeysForProvider(p);
@@ -220,6 +239,20 @@ program
     } else {
       console.log('✗ Key is invalid');
     }
+  });
+
+// ─── analytics ────────────────────────────────────────────
+program
+  .command('analytics')
+  .description('Start the analytics dashboard server')
+  .option('-p, --port <port>', 'Port to run on', '4142')
+  .action(async (opts: { port?: string }) => {
+    const { startAnalyticsServer } = await import('./analytics/index');
+    const port = opts.port ? parseInt(opts.port, 10) : 4142;
+    startAnalyticsServer(port);
+    
+    console.log(`[analytics] Dashboard available at http://localhost:${port}`);
+    console.log(`[analytics] Press Ctrl+C to stop`);
   });
 
 program.parse();

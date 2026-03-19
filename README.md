@@ -81,6 +81,28 @@ aido proxy
 aido run "what is 2+2"
 ```
 
+## Free Model Discovery (New Feature)
+
+The `--auto-free` flag enables automatic discovery and use of free-tier models:
+
+```bash
+# Try free models first before falling back to paid models
+aido run "test free models" --auto-free
+```
+
+How it works:
+1. Automatically queries each configured provider's API for available models
+2. Identifies which models are free tier (using provider-specific logic)
+3. Caches discovered free models in SQLite (1-hour TTL)
+4. Tries all free models across all providers before falling back to paid models
+5. Requires zero manual configuration - just use `--auto-free`
+
+Benefits:
+- Always uses available free models when possible
+- Automatically adapts to provider changes
+- Falls back to paid models only when necessary
+- No manual model selection required
+
 ---
 
 ## Commands
@@ -93,6 +115,7 @@ Adds an API key. Provider is auto-detected from the key format.
 aido add sk-zen-key-here...
 aido add sk-ant-api03-anthropic-key...
 aido add sk-proj-openai-key...
+aido add sk-or-v1-openrouter-key...
 
 # Override detection
 aido add some-key --provider groq
@@ -112,6 +135,7 @@ Sends a prompt to a model. Useful for quick testing.
 aido run "what is 2+2"
 aido run "write a haiku" --model mimo-v2-flash-free
 aido run "explain recursion" --provider zen --stream
+aido run "test free models" --auto-free  # Try free models first
 ```
 
 ### `aido models [provider]`
@@ -135,6 +159,14 @@ Free models on OpenCode Zen (at time of writing):
 | `mimo-v2-flash-free`      | MiMo V2 Flash       |
 | `nemotron-3-super-free`   | Nemotron 3 Super    |
 | `minimax-m2.5-free`       | MiniMax M2.5        |
+
+Free models available via OpenRouter:
+
+| Model ID                                     | Name                     |
+|----------------------------------------------|--------------------------|
+| `nvidia/nemotron-3-super-120b-a12b:free`     | Nemotron 3 Super         |
+| `openrouter/hunter-alpha`                    | Hunter Alpha             |
+| `openrouter/healer-alpha`                    | Healer Alpha             |
 
 ### `aido proxy`
 
@@ -335,6 +367,7 @@ aido clear
 | `sk-` + shorter      | OpenAI     |
 | `gsk_...`            | Groq       |
 | `AIza...`            | Google     |
+| `sk-or-v1-...`       | OpenRouter |
 
 ---
 

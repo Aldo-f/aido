@@ -12,7 +12,8 @@
     "install:systemd": "chmod +x aido && mkdir -p ~/.config/systemd/user && AIDO_PATH=\"$(pwd)\" USER=\"$(whoami)\" sh -c 'sed -e \"s|{AIDO_PATH}|${AIDO_PATH}|g\" -e \"s|{USER}|${USER}|g\" contrib/aido.service.template > ~/.config/systemd/user/aido.service' && systemctl --user daemon-reload",
     "uninstall:systemd": "systemctl --user stop aido || true && rm -f ~/.config/systemd/user/aido.service && systemctl --user daemon-reload",
     "test": "node --experimental-sqlite node_modules/.bin/vitest run",
-    "test:watch": "node --experimental-sqlite node_modules/.bin/vitest"
+    "test:watch": "node --experimental-sqlite node_modules/.bin/vitest",
+    "analytics": "tsx src/analytics/server.ts"
   },
   "dependencies": {
     "commander": "^12.1.0",
