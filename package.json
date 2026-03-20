@@ -1,6 +1,6 @@
 {
   "name": "aido",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Local API key rotation proxy for LLM providers",
   "type": "module",
   "bin": {
