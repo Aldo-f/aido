@@ -36,13 +36,13 @@ export function getDb(dbPath = DB_PATH): DatabaseSync {
       provider      TEXT    NOT NULL,
       model_id      TEXT    NOT NULL,
       model_name    TEXT    NOT NULL,
-      isFree        INTEGER NOT NULL DEFAULT 0,
+      is_free      INTEGER NOT NULL DEFAULT 0,
       discovered_at INTEGER NOT NULL,
       expires_at    INTEGER NOT NULL,
       PRIMARY KEY (provider, model_id)
     );
     CREATE INDEX IF NOT EXISTS idx_models_expires ON models(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_models_isFree ON models(isFree);
+    CREATE INDEX IF NOT EXISTS idx_models_is_free ON models(is_free);
     CREATE TABLE IF NOT EXISTS model_limits (
       provider      TEXT    NOT NULL,
       model_id      TEXT    NOT NULL,
@@ -50,6 +50,26 @@ export function getDb(dbPath = DB_PATH): DatabaseSync {
       PRIMARY KEY (provider, model_id)
     );
   `);
+
+  try {
+    _db.exec('ALTER TABLE request_log ADD COLUMN model TEXT NOT NULL DEFAULT ""');
+  } catch {
+    // Column may already exist
+  }
+  try {
+    _db.exec('ALTER TABLE request_log ADD COLUMN source TEXT NOT NULL DEFAULT "proxy"');
+  } catch {
+    // Column may already exist
+  }
+  try {
+    _db.exec('ALTER TABLE request_log ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0');
+  } catch {
+    // Column may already exist
+  }
+
+  _db.exec('CREATE INDEX IF NOT EXISTS idx_request_log_model ON request_log(model)');
+  _db.exec('CREATE INDEX IF NOT EXISTS idx_request_log_source ON request_log(source)');
+
   return _db;
 }
 
@@ -142,10 +162,17 @@ export function clearAllLimits(): number {
   return Number(result.changes);
 }
 
-export function logRequest(key: string, provider: string, status: number): void {
+export function logRequest(
+  key: string,
+  provider: string,
+  status: number,
+  model?: string,
+  source?: 'run' | 'proxy',
+  latencyMs?: number,
+): void {
   const db = getDb();
-  db.prepare('INSERT INTO request_log (key, provider, status) VALUES (?, ?, ?)')
-    .run(key, provider, status);
+  db.prepare('INSERT INTO request_log (key, provider, status, model, source, latency_ms) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(key, provider, status, model ?? '', source ?? 'proxy', latencyMs ?? 0);
 }
 
 export function getRateLimitedKeys(): Array<{ key: string; provider: string; limited_until: number }> {
@@ -206,11 +233,11 @@ export type FreeModel = ModelInfo;
 export function saveModels(provider: string, models: ModelInfo[]): void {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO models (provider, model_id, model_name, isFree, discovered_at, expires_at)
+    INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(provider, model_id) DO UPDATE SET
       model_name = excluded.model_name,
-      isFree = excluded.isFree,
+      is_free = excluded.is_free,
       discovered_at = excluded.discovered_at,
       expires_at = excluded.expires_at
   `);
@@ -225,8 +252,8 @@ export function getModel(provider: string, modelId: string): ModelInfo | null {
   const db = getDb();
   const now = Date.now();
   const row = db
-    .prepare('SELECT provider, model_id, model_name, isFree, discovered_at, expires_at FROM models WHERE provider = ? AND model_id = ? AND expires_at > ?')
-    .get(provider, modelId, now) as { provider: string; model_id: string; model_name: string; isFree: number; discovered_at: number; expires_at: number } | undefined;
+    .prepare('SELECT provider, model_id, model_name, is_free, discovered_at, expires_at FROM models WHERE provider = ? AND model_id = ? AND expires_at > ?')
+    .get(provider, modelId, now) as { provider: string; model_id: string; model_name: string; is_free: number; discovered_at: number; expires_at: number } | undefined;
   
   if (!row) return null;
   
@@ -234,7 +261,7 @@ export function getModel(provider: string, modelId: string): ModelInfo | null {
     id: row.model_id,
     name: row.model_name,
     provider: row.provider,
-    isFree: row.isFree === 1,
+    isFree: row.is_free === 1,
     discoveredAt: row.discovered_at,
     expiresAt: row.expires_at,
   };
@@ -244,14 +271,14 @@ export function getAllModels(provider: string): ModelInfo[] {
   const db = getDb();
   const now = Date.now();
   const rows = db
-    .prepare('SELECT provider, model_id, model_name, isFree, discovered_at, expires_at FROM models WHERE provider = ? AND expires_at > ?')
-    .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; isFree: number; discovered_at: number; expires_at: number }>;
+    .prepare('SELECT provider, model_id, model_name, is_free, discovered_at, expires_at FROM models WHERE provider = ? AND expires_at > ?')
+    .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; is_free: number; discovered_at: number; expires_at: number }>;
   
   return rows.map(row => ({
     id: row.model_id,
     name: row.model_name,
     provider: row.provider,
-    isFree: row.isFree === 1,
+    isFree: row.is_free === 1,
     discoveredAt: row.discovered_at,
     expiresAt: row.expires_at,
   }));
@@ -261,14 +288,14 @@ export function getFreeModels(provider: string): ModelInfo[] {
   const db = getDb();
   const now = Date.now();
   const rows = db
-    .prepare('SELECT provider, model_id, model_name, isFree, discovered_at, expires_at FROM models WHERE provider = ? AND expires_at > ? AND isFree = 1')
-    .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; isFree: number; discovered_at: number; expires_at: number }>;
+    .prepare('SELECT provider, model_id, model_name, is_free, discovered_at, expires_at FROM models WHERE provider = ? AND expires_at > ? AND is_free = 1')
+    .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; is_free: number; discovered_at: number; expires_at: number }>;
   
   return rows.map(row => ({
     id: row.model_id,
     name: row.model_name,
     provider: row.provider,
-    isFree: row.isFree === 1,
+    isFree: row.is_free === 1,
     discoveredAt: row.discovered_at,
     expiresAt: row.expires_at,
   }));

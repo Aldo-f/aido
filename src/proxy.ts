@@ -116,6 +116,13 @@ async function forwardRequest(
     ...config.authHeader(key),
   };
 
+  const startTime = Date.now();
+  let model = '';
+  try {
+    const parsed = JSON.parse(upstreamBody);
+    model = parsed.model ?? '';
+  } catch { /* no body or not JSON */ }
+
   try {
     const res = await fetch(url, {
       method,
@@ -125,7 +132,8 @@ async function forwardRequest(
 
     const rawBody = await res.text();
     const responseBody = isOllama ? fromOllamaResponse(rawBody) : rawBody;
-    logRequest(key, provider, res.status);
+    const latencyMs = Date.now() - startTime;
+    logRequest(key, provider, res.status, model, 'proxy', latencyMs);
 
     if (res.status === 404 && provider === 'ollama-local') {
       let model = '(unknown)';

@@ -240,18 +240,21 @@ program
     }
   });
 
-// ─── analytics ────────────────────────────────────────────
 program
   .command('analytics')
   .description('Start the analytics dashboard server')
   .option('-p, --port <port>', 'Port to run on', '4142')
   .action(async (opts: { port?: string }) => {
-    const { startAnalyticsServer } = await import('./analytics/index');
+    const { startAnalyticsServer } = await import('./analytics/api.js');
     const port = opts.port ? parseInt(opts.port, 10) : 4142;
-    startAnalyticsServer(port);
-    
+    const server = startAnalyticsServer(port);
     console.log(`[analytics] Dashboard available at http://localhost:${port}`);
     console.log(`[analytics] Press Ctrl+C to stop`);
+    process.on('SIGINT', () => {
+      server.close();
+      process.exit(0);
+    });
+    await new Promise(() => {});
   });
 
 program.parse();

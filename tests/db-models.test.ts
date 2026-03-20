@@ -24,12 +24,12 @@ describe('db - models table', () => {
 
       const db = getDb();
       const row = db
-        .prepare('SELECT model_id, isFree FROM models WHERE provider = ? AND model_id = ?')
-        .get('zen', 'big-pickle') as { model_id: string; isFree: number };
+        .prepare('SELECT model_id, is_free FROM models WHERE provider = ? AND model_id = ?')
+        .get('zen', 'big-pickle') as { model_id: string; is_free: number };
 
       expect(row).toBeDefined();
       expect(row.model_id).toBe('big-pickle');
-      expect(row.isFree).toBe(1);
+      expect(row.is_free).toBe(1);
     });
 
     it('saves a single paid model with isFree=0', () => {
@@ -46,12 +46,12 @@ describe('db - models table', () => {
 
       const db = getDb();
       const row = db
-        .prepare('SELECT model_id, isFree FROM models WHERE provider = ? AND model_id = ?')
-        .get('openai', 'gpt-4o') as { model_id: string; isFree: number };
+        .prepare('SELECT model_id, is_free FROM models WHERE provider = ? AND model_id = ?')
+        .get('openai', 'gpt-4o') as { model_id: string; is_free: number };
 
       expect(row).toBeDefined();
       expect(row.model_id).toBe('gpt-4o');
-      expect(row.isFree).toBe(0);
+      expect(row.is_free).toBe(0);
     });
 
     it('saves multiple models with correct isFree flags', () => {
@@ -78,14 +78,14 @@ describe('db - models table', () => {
 
       const db = getDb();
       const rows = db
-        .prepare('SELECT model_id, isFree FROM models WHERE provider = ? ORDER BY model_id')
-        .all('zen') as Array<{ model_id: string; isFree: number }>;
+        .prepare('SELECT model_id, is_free FROM models WHERE provider = ? ORDER BY model_id')
+        .all('zen') as Array<{ model_id: string; is_free: number }>;
 
       expect(rows).toHaveLength(2);
       expect(rows[0].model_id).toBe('big-pickle');
-      expect(rows[0].isFree).toBe(1);
+      expect(rows[0].is_free).toBe(1);
       expect(rows[1].model_id).toBe('some-paid-model');
-      expect(rows[1].isFree).toBe(0);
+      expect(rows[1].is_free).toBe(0);
     });
 
     it('updates existing models with new isFree value', () => {
@@ -113,10 +113,10 @@ describe('db - models table', () => {
 
       const db = getDb();
       const row = db
-        .prepare('SELECT isFree FROM models WHERE provider = ? AND model_id = ?')
-        .get('zen', 'big-pickle') as { isFree: number };
+        .prepare('SELECT is_free FROM models WHERE provider = ? AND model_id = ?')
+        .get('zen', 'big-pickle') as { is_free: number };
 
-      expect(row.isFree).toBe(0);
+      expect(row.is_free).toBe(0);
     });
   });
 
@@ -125,7 +125,7 @@ describe('db - models table', () => {
       const db = getDb();
 
       db.prepare(`
-        INSERT INTO models (provider, model_id, model_name, isFree, discovered_at, expires_at)
+        INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?)
       `).run(
         'zen', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() + 3600000,
@@ -143,7 +143,7 @@ describe('db - models table', () => {
       const db = getDb();
 
       db.prepare(`
-        INSERT INTO models (provider, model_id, model_name, isFree, discovered_at, expires_at)
+        INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run('zen', 'some-paid-model', 'Some Paid Model', 0, Date.now(), Date.now() + 3600000);
 
@@ -162,7 +162,7 @@ describe('db - models table', () => {
       const db = getDb();
 
       db.prepare(`
-        INSERT INTO models (provider, model_id, model_name, isFree, discovered_at, expires_at)
+        INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?)
       `).run(
         'zen', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() + 3600000,
@@ -182,7 +182,7 @@ describe('db - models table', () => {
       const db = getDb();
 
       db.prepare(`
-        INSERT INTO models (provider, model_id, model_name, isFree, discovered_at, expires_at)
+        INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run('zen', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() - 1000);
 
