@@ -6,7 +6,7 @@ import { addKeyToEnv } from './env.js';
 import { run } from './run.js';
 import { startProxy } from './proxy.js';
 import { launch } from './launch.js';
-import { getRateLimitedKeys, clearExpiredLimits, clearAllLimits } from './db.js';
+import { getRateLimitedKeys, clearExpiredLimits, clearAllLimits, clearAllModelLimits } from './db.js';
 import { showModels } from './models.js';
 import { loadKeysForProvider } from './rotator.js';
 import { readPid, deletePid, isStale } from './daemon.js';
@@ -151,7 +151,44 @@ program
   .description('Clear all rate limits (force all keys available)')
   .action(() => {
     const cleared = clearAllLimits();
-    console.log(`[clear] Cleared ${cleared} rate limit${cleared !== 1 ? 's' : ''}.`);
+    const modelCleared = clearAllModelLimits();
+    console.log(`[clear] Cleared ${cleared} key limit${cleared !== 1 ? 's' : ''} and ${modelCleared} model limit${modelCleared !== 1 ? 's' : ''}.`);
+  });
+
+// ─── sync ─────────────────────────────────────────────────────────────────
+program
+  .command('sync')
+  .description('Clear rate limits and refresh models from all providers')
+  .action(async () => {
+    const clearedKeys = clearAllLimits();
+    const clearedModels = clearAllModelLimits();
+    console.log(`[sync] Cleared ${clearedKeys} key limit${clearedKeys !== 1 ? 's' : ''} and ${clearedModels} model limit${clearedModels !== 1 ? 's' : ''}.`);
+
+    const providers: Provider[] = ['zen', 'openai', 'google', 'groq', 'ollama', 'ollama-local', 'openrouter'];
+    console.log('[sync] Refreshing models from all providers...\n');
+
+    for (const provider of providers) {
+      const keys = loadKeysForProvider(provider);
+      if (keys.length === 0) {
+        console.log(`[${provider}] No keys configured — skipping.`);
+        continue;
+      }
+      
+      let success = false;
+      for (const key of keys) {
+        try {
+          await showModels(provider, key, true);
+          success = true;
+          break;
+        } catch {}
+      }
+      
+      if (!success) {
+        console.log(`[${provider}] All keys failed — skipping.`);
+      }
+    }
+
+    console.log('\n[sync] ✓ Sync complete');
   });
 
 // ─── stop ─────────────────────────────────────────────────────────────────

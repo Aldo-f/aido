@@ -1,8 +1,10 @@
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { getRotator } from './rotator.js';
-import { logRequest, getFreeModels, getModel, getAllModels } from './db.js';
+import { getFreeModels, getModel, getAllModels } from './db.js';
 import { forwardAuto, type PriorityType } from './auto.js';
 import { routeAidoModel } from './models/router.js';
+import { fetchModels } from './models.js';
+import { tryWithKeyRotation } from './key-rotation.js';
 
 export interface RunOptions {
   provider: Provider | 'auto';
@@ -22,94 +24,76 @@ const DEFAULT_MODELS: Record<Provider, string> = {
   openrouter: 'nvidia/nemotron-3-super-120b-a12b:free',
 };
 
+async function handleStream(res: Response, provider: Provider, model: string): Promise<void> {
+  const reader = res.body?.getReader();
+  const decoder = new TextDecoder();
+  if (!reader) return;
+
+  process.stdout.write('[response] ');
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value);
+    for (const line of chunk.split('\n')) {
+      if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+      try {
+        const json = JSON.parse(line.slice(6));
+        const delta = json.choices?.[0]?.delta?.content ?? '';
+        process.stdout.write(delta);
+      } catch {}
+    }
+  }
+  console.log();
+}
+
+async function handleNonStream(res: Response, provider: Provider, model: string): Promise<void> {
+  const json = await res.json() as {
+    choices: Array<{ message: { content: string } }>;
+  };
+  const content = json.choices?.[0]?.message?.content ?? '(no response)';
+  console.log(`[response] (${provider}/${model})\n${content}`);
+}
+
+async function makeRequest(
+  provider: Provider,
+  model: string,
+  prompt: string,
+  stream: boolean,
+): Promise<{ res: Response; key: string }> {
+  const config = PROVIDER_CONFIGS[provider];
+  const url = `${config.baseUrl}/chat/completions`;
+  const body = JSON.stringify({ model, stream, messages: [{ role: 'user', content: prompt }] });
+  const baseHeaders = { 'content-type': 'application/json' };
+
+  return tryWithKeyRotation(provider, model, url, 'POST', baseHeaders, body);
+}
+
 export async function run(prompt: string, opts: RunOptions): Promise<void> {
   const { provider, model, stream = false, strategy = 'both' } = opts;
 
   if (provider === 'auto') {
     const modelName = model ?? 'auto';
     const route = routeAidoModel(modelName);
-    
+
     if (route.provider !== 'auto') {
       const specificProvider = route.provider as Provider;
-      const rotator = getRotator(specificProvider);
-      const key = rotator.next();
-      
-      if (!key) {
-        console.error(`[run] No available API keys for provider: ${specificProvider}`);
-        process.exit(1);
-      }
-      
-      const config = PROVIDER_CONFIGS[specificProvider];
-      const url = `${config.baseUrl}/chat/completions`;
-      
-      const body = JSON.stringify({
-        model: route.model,
-        stream,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      
-      const startTime = Date.now();
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...config.authHeader(key),
-        },
-        body,
-      });
-      
-      const latencyMs = Date.now() - startTime;
-      logRequest(key, specificProvider, res.status, route.model, 'run', latencyMs);
-      
-      if (res.status === 429) {
-        rotator.markLimited(key);
-        console.error(`[run] Rate limited. Key ...${key.slice(-8)} marked. Try again.`);
-        process.exit(1);
-      }
-      
-      if (!res.ok) {
-        const err = await res.text();
-        console.error(`[run] Error ${res.status}: ${err}`);
-        process.exit(1);
-      }
-      
-      if (stream) {
-        const reader = res.body?.getReader();
-        const decoder = new TextDecoder();
-        if (!reader) return;
-        
-        process.stdout.write('[response] ');
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value);
-          for (const line of chunk.split('\n')) {
-            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
-            try {
-              const json = JSON.parse(line.slice(6));
-              const delta = json.choices?.[0]?.delta?.content ?? '';
-              process.stdout.write(delta);
-            } catch {}
-          }
+
+      try {
+        const { res } = await makeRequest(specificProvider, route.model, prompt, stream);
+        if (stream) {
+          await handleStream(res, specificProvider, route.model);
+        } else {
+          await handleNonStream(res, specificProvider, route.model);
         }
-        console.log();
-      } else {
-        const json = await res.json() as {
-          choices: Array<{ message: { content: string } }>;
-        };
-        const content = json.choices?.[0]?.message?.content ?? '(no response)';
-        console.log(`[response] (${specificProvider}/${route.model})\n${content}`);
+        return;
+      } catch (err) {
+        console.error(`[run] ${err}`);
+        process.exit(1);
       }
-      return;
     }
-    
+
     const priorityType: PriorityType = route.priorityType ?? 'auto';
-    
-    const body = JSON.stringify({
-      model: route.model,
-      stream,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const body = JSON.stringify({ model: route.model, stream, messages: [{ role: 'user', content: prompt }] });
     const result = await forwardAuto('/v1/chat/completions', 'POST', body, priorityType, route.model);
 
     if (result.status === 503) {
@@ -132,22 +116,34 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
 
   const config = PROVIDER_CONFIGS[provider];
   const url = `${config.baseUrl}/chat/completions`;
-  
+
   let modelsToTry: string[];
-  
+
   if (model) {
-    const modelInfo = getModel(provider, model);
+    let modelInfo = getModel(provider, model);
     if (!modelInfo) {
-      console.error(`[run] Model '${model}' not found for provider '${provider}'`);
-      console.error(`[run] Available models: ${getAllModels(provider).map(m => m.id).join(', ')}`);
-      process.exit(1);
+      const rotator = getRotator(provider);
+      const key = rotator.next();
+      if (key) {
+        console.log(`[run] Model '${model}' not found, fetching models from ${provider}...`);
+        try {
+          await fetchModels(provider, key);
+          modelInfo = getModel(provider, model);
+        } catch {}
+      }
+
+      if (!modelInfo) {
+        console.error(`[run] Model '${model}' not found for provider '${provider}'`);
+        console.error(`[run] Available models: ${getAllModels(provider).map(m => m.id).join(', ')}`);
+        process.exit(1);
+      }
     }
     modelsToTry = [model];
   } else {
     const allModels = getAllModels(provider);
     const freeModels = allModels.filter(m => m.isFree);
     const paidModels = allModels.filter(m => !m.isFree);
-    
+
     if (strategy === 'free') {
       modelsToTry = freeModels.map(m => m.id);
     } else if (strategy === 'paid') {
@@ -155,98 +151,35 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
     } else {
       modelsToTry = [...freeModels.map(m => m.id), ...paidModels.map(m => m.id)];
     }
-    
+
     if (modelsToTry.length === 0) {
       modelsToTry = [DEFAULT_MODELS[provider]];
     }
   }
 
-  let lastError: Error | null = null;
+  const rotator = getRotator(provider);
+  if (rotator.availableKeys().length === 0) {
+    console.error(`[run] No available API keys for provider: ${provider}`);
+    process.exit(1);
+  }
+
   for (const selectedModel of modelsToTry) {
-    const rotator = getRotator(provider);
-    const key = rotator.next();
+    const baseHeaders = { 'content-type': 'application/json' };
+    const body = JSON.stringify({ model: selectedModel, stream, messages: [{ role: 'user', content: prompt }] });
 
-    if (!key) {
-      console.error(`[run] No available API keys for provider: ${provider}`);
-      process.exit(1);
-    }
-
-    console.log(`[run] Provider: ${provider} | Model: ${selectedModel} | Key: ...${key.slice(-8)}`);
-
-    const body = JSON.stringify({
-      model: selectedModel,
-      stream,
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    let res: Response;
-    const startTime = Date.now();
     try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...config.authHeader(key),
-        },
-        body,
-      });
-    } catch (err) {
-      const msg = (err as NodeJS.ErrnoException).code === 'EAI_AGAIN' || (err as NodeJS.ErrnoException).code === 'ENOTFOUND'
-        ? `Could not reach ${provider} API. Are you online?`
-        : `Network error: ${(err as Error).message}`;
-      lastError = new Error(msg);
-      continue;
-    }
-    
-    const latencyMs = Date.now() - startTime;
-    logRequest(key, provider, res.status, selectedModel, 'run', latencyMs);
-    
-    if (res.status === 429) {
-      rotator.markLimited(key);
-      console.log(`[run] Rate limited. Key ...${key.slice(-8)} marked. Trying next model...`);
-      continue;
-    }
-
-    if (!res.ok) {
-      const err = await res.text();
-      console.log(`[run] Error ${res.status}: ${err}. Trying next model...`);
-      continue;
-    }
-
-    if (stream) {
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (!reader) return;
-
-      process.stdout.write('[response] ');
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        for (const line of chunk.split('\n')) {
-          if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
-          try {
-            const json = JSON.parse(line.slice(6));
-            const delta = json.choices?.[0]?.delta?.content ?? '';
-            process.stdout.write(delta);
-          } catch {}
-        }
+      const { res } = await tryWithKeyRotation(provider, selectedModel, url, 'POST', baseHeaders, body);
+      if (stream) {
+        await handleStream(res, provider, selectedModel);
+      } else {
+        await handleNonStream(res, provider, selectedModel);
       }
-      console.log();
-    } else {
-      const json = await res.json() as {
-        choices: Array<{ message: { content: string } }>;
-      };
-      const content = json.choices?.[0]?.message?.content ?? '(no response)';
-      console.log(`[response] (${provider}/${selectedModel})\n${content}`);
+      return;
+    } catch (err) {
+      console.log(`[run] ${err instanceof Error ? err.message : err}`);
     }
-    return;
   }
 
-  if (lastError) {
-    console.error(`[run] ✗ ${lastError.message}`);
-  } else {
-    console.error(`[run] ✗ All models for ${provider} failed`);
-  }
+  console.error(`[run] All models for ${provider} failed`);
   process.exit(1);
 }

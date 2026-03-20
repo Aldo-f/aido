@@ -1,10 +1,12 @@
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { getDb } from './db.js';
 import { mergeWithCapabilities, type ModelCapabilities } from './model-capabilities.js';
+import { identifyFreeModels, type RawModel } from './free-discovery.js';
 
 export interface ModelInfo {
   id: string;
   owned_by?: string;
+  isFree?: boolean;
   capabilities?: ModelCapabilities;
 }
 
@@ -66,40 +68,45 @@ export function hasReasoning(provider: string, model: string): boolean {
   return modelsDevCache?.data?.[provider]?.models?.[model]?.reasoning ?? false;
 }
 
-function ensureModelsTable(): void {
-  getDb().exec(`
-    CREATE TABLE IF NOT EXISTS models_cache (
-      provider TEXT NOT NULL,
-      key_hint TEXT NOT NULL,
-      data     TEXT NOT NULL,
-      fetched_at INTEGER NOT NULL,
-      PRIMARY KEY (provider, key_hint)
-    )
-  `);
-}
-
 function getCached(provider: string, keyHint: string): ModelInfo[] | null {
-  ensureModelsTable();
-  const row = getDb()
-    .prepare('SELECT data, fetched_at FROM models_cache WHERE provider = ? AND key_hint = ?')
-    .get(provider, keyHint) as { data: string; fetched_at: number } | undefined;
-
-  if (!row) return null;
-  if (Date.now() - row.fetched_at > CACHE_TTL_MS) return null;
-  return JSON.parse(row.data) as ModelInfo[];
+  const db = getDb();
+  const now = Date.now();
+  const cutoff = now - CACHE_TTL_MS;
+  
+  const rows = db
+    .prepare('SELECT model_id, model_name, discovered_at, expires_at FROM models WHERE provider = ? AND discovered_at > ?')
+    .all(provider, cutoff) as Array<{ model_id: string; model_name: string; discovered_at: number; expires_at: number }>;
+  
+  if (rows.length === 0) return null;
+  
+  return rows.map(row => ({
+    id: row.model_id,
+    owned_by: provider,
+  }));
 }
 
 function setCache(provider: string, keyHint: string, models: ModelInfo[]): void {
-  ensureModelsTable();
-  getDb()
-    .prepare(`
-      INSERT INTO models_cache (provider, key_hint, data, fetched_at)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(provider, key_hint) DO UPDATE SET
-        data = excluded.data,
-        fetched_at = excluded.fetched_at
-    `)
-    .run(provider, keyHint, JSON.stringify(models), Date.now());
+  const db = getDb();
+  const now = Date.now();
+  const expiresAt = now + CACHE_TTL_MS;
+  
+  db.prepare('DELETE FROM models WHERE provider = ?').run(provider);
+  
+  const stmt = db.prepare(`
+    INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  
+  for (const model of models) {
+    stmt.run(
+      provider,
+      model.id,
+      model.id,
+      model.isFree ? 1 : 0,
+      now,
+      expiresAt
+    );
+  }
 }
 
 export async function fetchModels(
@@ -147,7 +154,6 @@ export async function fetchModels(
 
   let models: ModelInfo[];
   if (json.models) {
-    // Google: {models: [{name: "models/gemini-1.5-pro", ...}]} or Ollama Cloud
     models = json.models.map((m) => {
       const modelId = m.name?.replace('models/', '') ?? m.model ?? '?';
       return {
@@ -166,57 +172,55 @@ export async function fetchModels(
     });
   }
 
+  const rawModels: RawModel[] = models.map(m => ({ id: m.id }));
+  const identified = identifyFreeModels(provider, rawModels);
+  const freeMap = new Map(identified.map(m => [m.id, m.isFree]));
+  for (const model of models) {
+    model.isFree = freeMap.get(model.id) ?? false;
+  }
+
   setCache(provider, keyHint, models);
   return models;
 }
 
 export async function showModels(provider: Provider, key: string, force: boolean): Promise<void> {
-  let models: ModelInfo[];
-  try {
-    models = await fetchModels(provider, key, force);
-  } catch (err) {
-    return;
-  }
+  const models = await fetchModels(provider, key, force);
 
   if (models.length === 0) {
     return;
   }
 
-  // Group by owned_by if present
-  const groups = new Map<string, string[]>();
+  const groups = new Map<string, ModelInfo[]>();
   for (const m of models) {
     const group = m.owned_by ?? provider;
     if (!groups.has(group)) groups.set(group, []);
-    groups.get(group)!.push(m.id);
+    groups.get(group)!.push(m);
   }
 
-  for (const [group, ids] of groups) {
+  for (const [group, modelList] of groups) {
     try {
       console.log(`  [${group}]`);
-      for (const id of ids) {
-        console.log(`    ${id}`);
+      for (const m of modelList) {
+        const tag = m.isFree ? ' [free]' : '';
+        console.log(`    ${m.id}${tag}`);
       }
     } catch (err) {
-      // Ignore EPIPE errors when piping to head/tail/etc
       if (err && typeof err === 'object' && 'code' in err && err.code === 'EPIPE') {
-        // Exit gracefully when consumer closes the pipe
         return;
       }
-      // Re-throw non-EPIPE errors
       throw err;
     }
   }
 
+  const freeCount = models.filter(m => m.isFree).length;
+  const paidCount = models.length - freeCount;
   try {
-    console.log(`\n  ${models.length} models total`);
+    console.log(`\n  ${models.length} models total (${freeCount} free, ${paidCount} paid)`);
     console.log('  (cached for 1h — use --sync to refresh)\n');
-   } catch (err) {
-     // Ignore EPIPE errors when piping to head/tail/etc
-     if (err && typeof err === 'object' && 'code' in err && err.code === 'EPIPE') {
-       // Exit gracefully when consumer closes the pipe
-       return;
-     }
-     // Re-throw non-EPIPE errors
-     throw err;
-   }
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'EPIPE') {
+      return;
+    }
+    throw err;
+  }
 }

@@ -4,12 +4,12 @@ import { logRequest as dbLogRequest, getFreeModels } from './db.js';
 import { logRequest as fileLogRequest } from './logger.js';
 import { toOllamaBody, fromOllamaResponse, toOllamaPath } from './ollama.js';
 import { PRIORITIES } from './priorities.js';
+import { tryKey } from './key-rotation.js';
 
 export const AUTO_PRIORITY = PRIORITIES.auto;
 
 export type PriorityType = 'auto' | 'cloud' | 'local';
 
-/** Non-retryable HTTP status codes */
 const FATAL_STATUSES = new Set([400, 401, 403, 404]);
 
 export interface AutoResult {
@@ -28,8 +28,8 @@ export async function forwardAuto(
   specificModel?: string,
 ): Promise<AutoResult> {
   const tried: string[] = [];
-  const priorities = priorityType === 'cloud' ? PRIORITIES.cloud 
-                   : priorityType === 'local' ? PRIORITIES.local 
+  const priorities = priorityType === 'cloud' ? PRIORITIES.cloud
+                   : priorityType === 'local' ? PRIORITIES.local
                    : AUTO_PRIORITY;
 
   const overallStartTime = Date.now();
@@ -37,18 +37,17 @@ export async function forwardAuto(
   console.log(`${logPrefix} Starting request (priority: ${priorityType})`);
 
   for (const { provider, model } of priorities) {
-    const providerStartTime = Date.now();
     const rotator = getRotator(provider);
-    const key = rotator.next();
+    const availableKeys = rotator.availableKeys();
 
-    if (!key) {
+    if (availableKeys.length === 0) {
       tried.push(`${provider}(no keys)`);
       console.log(`${logPrefix}   ${provider}: no keys available`);
       continue;
     }
 
     let modelToTry = model;
-    if (specificModel) {
+    if (specificModel && specificModel !== 'auto') {
       const freeModels = getFreeModels(provider);
       const hasModel = freeModels.some(m => m.id === specificModel);
       if (!hasModel && specificModel !== model) {
@@ -59,7 +58,7 @@ export async function forwardAuto(
       modelToTry = specificModel;
     }
 
-    console.log(`${logPrefix}   ${provider}: trying ${modelToTry}...`);
+    console.log(`${logPrefix}   ${provider}: trying ${modelToTry} with ${availableKeys.length} key(s)...`);
     const config = PROVIDER_CONFIGS[provider];
     const isOllama = config.nativeFormat === true;
 
@@ -72,60 +71,62 @@ export async function forwardAuto(
         parsed.model = modelToTry;
       }
       upstreamBody = JSON.stringify(parsed);
-    } catch { /* leave body as-is */ }
+    } catch {}
 
     if (isOllama) upstreamBody = toOllamaBody(upstreamBody);
 
     let upstreamPath = isOllama ? toOllamaPath(openaiPath) : openaiPath;
-    // For ollama, baseUrl already ends with /api or /v1 - don't double-prefix
     if (upstreamPath.startsWith('/v1') || upstreamPath.startsWith('/api')) {
       upstreamPath = upstreamPath.replace(/^\/v1/, '').replace(/^\/api/, '');
     }
     const url = `${config.baseUrl}${upstreamPath}`;
-    const startTime = Date.now();
 
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method,
-        headers: {
-          'content-type': 'application/json',
-          ...config.authHeader(key),
-        },
-        body: method !== 'GET' && method !== 'HEAD' ? upstreamBody : undefined,
-      });
-    } catch (err) {
-      tried.push(`${provider}(network error: ${(err as Error).message})`);
-      continue;
+    let success = false;
+
+    for (const key of availableKeys) {
+      const startTime = Date.now();
+      const baseHeaders = { 'content-type': 'application/json' };
+      const result = await tryKey(provider, key, modelToTry, url, method, baseHeaders, upstreamBody);
+
+      const duration = Date.now() - startTime;
+      const rawBody = result.response ? await result.response.text() : '';
+      const responseBody = isOllama ? fromOllamaResponse(rawBody) : rawBody;
+      fileLogRequest({ provider, model: modelToTry, key, status: result.response?.status ?? 0, duration, responseSize: rawBody.length });
+
+      if (result.status === 'rate_limited') {
+        tried.push(`${provider}/${modelToTry}(429 on ...${key.slice(-8)})`);
+        console.log(`[auto] ${provider}/${modelToTry} rate limited (key ...${key.slice(-8)}) → trying next key`);
+        continue;
+      }
+
+      if (result.status === 'invalid_key') {
+        tried.push(`${provider}/${modelToTry}(invalid key ...${key.slice(-8)})`);
+        console.log(`[auto] ${provider}/${modelToTry} invalid key (...${key.slice(-8)}) → trying next key`);
+        continue;
+      }
+
+      if (result.status === 'network_error') {
+        tried.push(`${provider}/${modelToTry}(network error)`);
+        console.log(`[auto] ${provider}/${modelToTry} network error → trying next key`);
+        continue;
+      }
+
+      if (result.status === 'fatal') {
+        tried.push(`${provider}/${modelToTry}(${result.response?.status})`);
+        console.log(`[auto] ${provider}/${modelToTry} → ${result.response?.status}, trying next key`);
+        continue;
+      }
+
+      if (result.status === 'success' && result.response) {
+        const totalTime = Date.now() - overallStartTime;
+        console.log(`[auto] ✓ ${provider}/${modelToTry} succeeded in ${totalTime}ms (tried: ${tried.join(', ') || 'none'})`);
+        const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
+        result.response.headers.forEach((v, k) => { if (k !== 'content-type') responseHeaders[k] = v; });
+        return { status: result.response.status, body: responseBody, headers: responseHeaders, usedProvider: provider, usedModel: modelToTry };
+      }
     }
 
-    const rawBody = await res.text();
-    const responseBody = isOllama ? fromOllamaResponse(rawBody) : rawBody;
-    const duration = Date.now() - startTime;
-    dbLogRequest(key, provider, res.status);
-    fileLogRequest({ provider, model, key, status: res.status, duration, responseSize: rawBody.length });
-
-    if (res.status === 429) {
-      const retryAfter = res.headers.get('retry-after');
-      rotator.markLimited(key, retryAfter ? parseInt(retryAfter, 10) : 3600);
-      tried.push(`${provider}(429)`);
-      console.log(`[auto] ${provider}/${model} rate limited → trying next`);
-      continue;
-    }
-
-    if (FATAL_STATUSES.has(res.status)) {
-      tried.push(`${provider}(${res.status})`);
-      console.log(`[auto] ${provider}/${model} → ${res.status}, trying next`);
-      continue;
-    }
-
-    // Success
-    const totalTime = Date.now() - overallStartTime;
-    console.log(`[auto] ✓ ${provider}/${model} succeeded in ${totalTime}ms (tried: ${tried.join(', ') || 'none'})`);
-    const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
-    res.headers.forEach((v, k) => { if (k !== 'content-type') responseHeaders[k] = v; });
-
-    return { status: res.status, body: responseBody, headers: responseHeaders, usedProvider: provider, usedModel: model };
+    console.log(`[auto] ${provider}: all keys exhausted for ${modelToTry}`);
   }
 
   const totalTime = Date.now() - overallStartTime;
@@ -153,17 +154,14 @@ export async function forwardAutoFree(
   const overallStartTime = Date.now();
   console.log(`[auto-free] Starting request (priority: ${priorityType})`);
 
-  // Get all providers that have keys configured
   const providers = Object.keys(PROVIDER_CONFIGS) as Provider[];
   const configuredProviders = providers.filter(provider => loadKeysForProvider(provider).length > 0);
 
   if (configuredProviders.length === 0) {
     console.log(`[auto-free] No providers with keys configured`);
-    // Fall back to forwardAuto which will handle the no keys case
     return forwardAuto(openaiPath, method, body, priorityType);
   }
 
-  // Try free models for each provider
   for (const provider of configuredProviders) {
     const freeModels = getFreeModels(provider);
     if (freeModels.length === 0) {
@@ -173,18 +171,14 @@ export async function forwardAutoFree(
     }
 
     console.log(`[auto-free]   ${provider}: trying ${freeModels.length} free model(s)...`);
-    
-    // Create a rotator specifically for the free models of this provider
+
     const freeModelIds = freeModels.map(model => model.id);
     const rotator = new KeyRotator(provider, undefined, freeModelIds);
 
     let providerTried = 0;
     while (true) {
       const keyModel = rotator.getNextModel();
-      if (!keyModel) {
-        // No more available key-model pairs for this provider's free models
-        break;
-      }
+      if (!keyModel) break;
 
       const key = keyModel.key;
       const model: string = keyModel.model;
@@ -196,17 +190,15 @@ export async function forwardAutoFree(
       let upstreamBody = body;
       try {
         const parsed = JSON.parse(body);
-        // For free models, we don't have priorityType concept, just set the model
         if (!parsed.model || parsed.model === 'auto') {
           parsed.model = model;
         }
         upstreamBody = JSON.stringify(parsed);
-      } catch { /* leave body as-is */ }
+      } catch {}
 
       if (isOllama) upstreamBody = toOllamaBody(upstreamBody);
 
       let upstreamPath = isOllama ? toOllamaPath(openaiPath) : openaiPath;
-      // For ollama, baseUrl already ends with /api or /v1 - don't double-prefix
       if (upstreamPath.startsWith('/v1') || upstreamPath.startsWith('/api')) {
         upstreamPath = upstreamPath.replace(/^\/v1/, '').replace(/^\/api/, '');
       }
@@ -238,10 +230,17 @@ export async function forwardAutoFree(
       if (res.status === 429) {
         const retryAfter = res.headers.get('retry-after');
         rotator.markLimited(key, retryAfter ? parseInt(retryAfter, 10) : 3600);
-        // Also mark the model as limited
         rotator.markModelLimited(model, retryAfter ? parseInt(retryAfter, 10) : 3600);
         tried.push(`${provider}/${model}(429)`);
         console.log(`[auto-free]     ${provider}/${model} rate limited → trying next`);
+        providerTried++;
+        continue;
+      }
+
+      if (res.status === 401 || res.status === 403) {
+        rotator.markLimited(key, 30 * 24 * 60 * 60);
+        tried.push(`${provider}/${model}(${res.status} invalid key)`);
+        console.log(`[auto-free]     ${provider}/${model} invalid key → trying next`);
         providerTried++;
         continue;
       }
@@ -253,7 +252,6 @@ export async function forwardAutoFree(
         continue;
       }
 
-      // Success
       const totalTime = Date.now() - overallStartTime;
       console.log(`[auto-free]   ✓ ${provider}/${model} succeeded in ${totalTime}ms (tried: ${providerTried} key-model pairs)`);
       const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
@@ -265,7 +263,6 @@ export async function forwardAutoFree(
     console.log(`[auto-free]   ${provider}: exhausted all free model/key combinations`);
   }
 
-  // If we get here, no free models worked. Fall back to paid models via forwardAuto.
   console.log(`[auto-free] All free models exhausted, falling back to paid models`);
   const fallbackResult = await forwardAuto(openaiPath, method, body, priorityType);
   return fallbackResult;

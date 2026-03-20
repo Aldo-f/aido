@@ -78,10 +78,6 @@ export function isAidoPath(path: string): boolean {
   return path.trim().replace(/^\/+|\/+$/g, '').toLowerCase().startsWith('aido');
 }
 
-/**
- * Parse a model name from request body.
- * Handles formats: aido/auto, aido/cloud, aido/local, aido/zen/big-pickle, aido/ollama/qwen3:8b
- */
 export function parseAidoModelName(modelName: string): ParsedAidoModel {
   if (!modelName || typeof modelName !== 'string') {
     throw new Error("Model name is required");
@@ -93,8 +89,13 @@ export function parseAidoModelName(modelName: string): ParsedAidoModel {
     throw new Error("Model name cannot be empty");
   }
 
-  // Add 'aido/' prefix if not present, since parseAidoModel expects it
-  const path = trimmed.toLowerCase().startsWith('aido/') ? trimmed : `aido/${trimmed}`;
+  if (trimmed.toLowerCase().startsWith('aido/')) {
+    return parseAidoModel(trimmed);
+  }
 
-  return parseAidoModel(path);
+  return {
+    category: 'auto',
+    provider: null,
+    model: trimmed,
+  };
 }

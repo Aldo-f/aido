@@ -1,9 +1,9 @@
 // Free model discovery module
 // Automatically queries provider APIs to discover available free models
 
-import { PROVIDER_CONFIGS, type Provider } from './detector';
-import { loadKeysForProvider } from './rotator';
-import { getFreeModels, invalidateCache, saveModels } from './db';
+import { PROVIDER_CONFIGS, type Provider } from './detector.js';
+import { loadKeysForProvider } from './rotator.js';
+import { getFreeModels, invalidateCache, saveModels } from './db.js';
 
 /**
  * Represents a discovered free model

@@ -32,17 +32,17 @@ export function getDb(dbPath = DB_PATH): DatabaseSync {
       keys_found  INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_searched_at ON searched_sources(searched_at);
-    CREATE TABLE IF NOT EXISTS models (
-      provider      TEXT    NOT NULL,
-      model_id      TEXT    NOT NULL,
-      model_name    TEXT    NOT NULL,
-      is_free      INTEGER NOT NULL DEFAULT 0,
-      discovered_at INTEGER NOT NULL,
-      expires_at    INTEGER NOT NULL,
-      PRIMARY KEY (provider, model_id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_models_expires ON models(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_models_is_free ON models(is_free);
+     CREATE TABLE IF NOT EXISTS models (
+       provider      TEXT    NOT NULL,
+       model_id      TEXT    NOT NULL,
+       model_name    TEXT    NOT NULL,
+       is_free       INTEGER NOT NULL DEFAULT 0,
+       discovered_at INTEGER NOT NULL,
+       expires_at    INTEGER NOT NULL,
+       PRIMARY KEY (provider, model_id)
+     );
+     CREATE INDEX IF NOT EXISTS idx_models_expires ON models(expires_at);
+     CREATE INDEX IF NOT EXISTS idx_models_is_free ON models(is_free);
     CREATE TABLE IF NOT EXISTS model_limits (
       provider      TEXT    NOT NULL,
       model_id      TEXT    NOT NULL,
@@ -162,6 +162,12 @@ export function clearAllLimits(): number {
   return Number(result.changes);
 }
 
+export function clearAllModelLimits(): number {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM model_limits').run();
+  return Number(result.changes);
+}
+
 export function logRequest(
   key: string,
   provider: string,
@@ -273,7 +279,7 @@ export function getAllModels(provider: string): ModelInfo[] {
   const rows = db
     .prepare('SELECT provider, model_id, model_name, is_free, discovered_at, expires_at FROM models WHERE provider = ? AND expires_at > ?')
     .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; is_free: number; discovered_at: number; expires_at: number }>;
-  
+   
   return rows.map(row => ({
     id: row.model_id,
     name: row.model_name,
@@ -290,7 +296,7 @@ export function getFreeModels(provider: string): ModelInfo[] {
   const rows = db
     .prepare('SELECT provider, model_id, model_name, is_free, discovered_at, expires_at FROM models WHERE provider = ? AND expires_at > ? AND is_free = 1')
     .all(provider, now) as Array<{ provider: string; model_id: string; model_name: string; is_free: number; discovered_at: number; expires_at: number }>;
-  
+   
   return rows.map(row => ({
     id: row.model_id,
     name: row.model_name,

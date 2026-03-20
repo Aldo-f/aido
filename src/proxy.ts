@@ -108,7 +108,25 @@ async function forwardRequest(
   if (config.baseUrl.endsWith('/v1') && upstreamPath.startsWith('/v1')) {
     upstreamPath = upstreamPath.slice(3);
   }
-  const upstreamBody = isOllama && method !== 'GET' ? toOllamaBody(body) : body;
+  
+  // Parse body to potentially update model name for upstream request
+  let upstreamBody = body;
+  let modelForLogging = '';
+  try {
+    const parsed = JSON.parse(body);
+    modelForLogging = parsed.model ?? '';
+    
+    // If we have a model in the body, resolve it and send the resolved model upstream
+    if (parsed.model && typeof parsed.model === 'string') {
+      const resolved = resolveProvider(path, body);
+      if (resolved.model && resolved.provider !== 'auto') {
+        parsed.model = resolved.model;
+        upstreamBody = JSON.stringify(parsed);
+      }
+    }
+  } catch { /* no body or not JSON */ }
+
+  const upstreamBodyForOllama = isOllama && method !== 'GET' ? toOllamaBody(upstreamBody) : upstreamBody;
   const url = `${config.baseUrl}${upstreamPath}`;
 
   const forwardHeaders: Record<string, string> = {
@@ -117,17 +135,13 @@ async function forwardRequest(
   };
 
   const startTime = Date.now();
-  let model = '';
-  try {
-    const parsed = JSON.parse(upstreamBody);
-    model = parsed.model ?? '';
-  } catch { /* no body or not JSON */ }
+  let model = modelForLogging; // Use the parsed model for logging
 
   try {
     const res = await fetch(url, {
       method,
       headers: forwardHeaders,
-      body: method !== 'GET' && method !== 'HEAD' ? upstreamBody : undefined,
+      body: method !== 'GET' && method !== 'HEAD' ? upstreamBodyForOllama : undefined,
     });
 
     const rawBody = await res.text();
