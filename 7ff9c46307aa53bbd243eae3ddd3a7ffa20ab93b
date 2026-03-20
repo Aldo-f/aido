@@ -1,0 +1,44 @@
+src/models/router.ts
+  aab0e77a2f60743d 71
+tests/run-specific-provider.test.ts
+  aab0e77a2f60743d 45-51
+src/auto.ts
+  aab0e77a2f60743d 28,36-37,46,50-62,70,72
+src/run.ts
+  aab0e77a2f60743d 111
+tests/parser.test.ts
+  aab0e77a2f60743d 116-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "7ff9c46307aa53bbd243eae3ddd3a7ffa20ab93b",
+  "prompts": {
+    "a24bbf8446637322": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2feb2d508ffeoVU3C44GuFc2C9",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "aab0e77a2f60743d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
+        "model": "opencode/mimo-v2-flash-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 37,
+      "total_deletions": 18,
+      "accepted_lines": 32,
+      "overriden_lines": 0
+    }
+  }
+}
