@@ -68,7 +68,7 @@ export function routeAidoModel(pathname: string): RouteResult {
   if (parsed.category === 'auto') {
     return {
       provider: 'auto',
-      model: AUTO_PRIORITY[0].model,
+      model: parsed.model ?? AUTO_PRIORITY[0].model,
       upstreamPath: '/v1/chat/completions',
       isAuto: true,
       priorityType: 'auto',

@@ -42,6 +42,13 @@ describe('run - specific provider routing', () => {
     expect(route.isAuto).toBe(true);
   });
 
+  it('should route aido/auto/<model> to auto-routing with specific model', () => {
+    const route = routeAidoModel('aido/auto/big-pickle');
+    expect(route.provider).toBe('auto');
+    expect(route.model).toBe('big-pickle');
+    expect(route.isAuto).toBe(true);
+  });
+
   it('should verify specific provider routing logic', () => {
     saveModels('zen', [{
       id: 'minimax-m2.5-free',

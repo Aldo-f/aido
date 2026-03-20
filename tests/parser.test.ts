@@ -113,8 +113,10 @@ describe('parseAidoModel', () => {
       expect(() => parseAidoModel('aido/unknown')).toThrow("Unknown category or provider");
     });
 
-    it('throws for aido/auto/model', () => {
-      expect(() => parseAidoModel('aido/auto/model')).toThrow("does not accept a model name");
+    it('accepts aido/auto/model for cross-provider model search', () => {
+      const result = parseAidoModel('aido/auto/big-pickle');
+      expect(result.category).toBe('auto');
+      expect(result.model).toBe('big-pickle');
     });
 
     it('throws for aido/zen (missing model)', () => {

@@ -25,6 +25,7 @@ export async function forwardAuto(
   method: string,
   body: string,
   priorityType: PriorityType = 'auto',
+  specificModel?: string,
 ): Promise<AutoResult> {
   const tried: string[] = [];
   const priorities = priorityType === 'cloud' ? PRIORITIES.cloud 
@@ -32,7 +33,8 @@ export async function forwardAuto(
                    : AUTO_PRIORITY;
 
   const overallStartTime = Date.now();
-  console.log(`[auto] Starting request (priority: ${priorityType})`);
+  const logPrefix = specificModel ? `[auto/${specificModel}]` : '[auto]';
+  console.log(`${logPrefix} Starting request (priority: ${priorityType})`);
 
   for (const { provider, model } of priorities) {
     const providerStartTime = Date.now();
@@ -41,11 +43,23 @@ export async function forwardAuto(
 
     if (!key) {
       tried.push(`${provider}(no keys)`);
-      console.log(`[auto]   ${provider}: no keys available`);
+      console.log(`${logPrefix}   ${provider}: no keys available`);
       continue;
     }
 
-    console.log(`[auto]   ${provider}: trying ${model}...`);
+    let modelToTry = model;
+    if (specificModel) {
+      const freeModels = getFreeModels(provider);
+      const hasModel = freeModels.some(m => m.id === specificModel);
+      if (!hasModel && specificModel !== model) {
+        tried.push(`${provider}(${specificModel} not found)`);
+        console.log(`${logPrefix}   ${provider}: ${specificModel} not available`);
+        continue;
+      }
+      modelToTry = specificModel;
+    }
+
+    console.log(`${logPrefix}   ${provider}: trying ${modelToTry}...`);
     const config = PROVIDER_CONFIGS[provider];
     const isOllama = config.nativeFormat === true;
 
@@ -53,9 +67,9 @@ export async function forwardAuto(
     try {
       const parsed = JSON.parse(body);
       if (priorityType === 'cloud' || priorityType === 'local') {
-        parsed.model = model;
+        parsed.model = modelToTry;
       } else if (!parsed.model || parsed.model === 'auto') {
-        parsed.model = model;
+        parsed.model = modelToTry;
       }
       upstreamBody = JSON.stringify(parsed);
     } catch { /* leave body as-is */ }

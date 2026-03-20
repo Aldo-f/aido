@@ -108,7 +108,7 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
       stream,
       messages: [{ role: 'user', content: prompt }],
     });
-    const result = await forwardAuto('/v1/chat/completions', 'POST', body, priorityType);
+    const result = await forwardAuto('/v1/chat/completions', 'POST', body, priorityType, route.model);
 
     if (result.status === 503) {
       console.error(`[run] All providers exhausted: ${result.body}`);

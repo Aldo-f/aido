@@ -53,10 +53,6 @@ export function parseAidoModel(path: string): ParsedAidoModel {
       return { category, provider: null, model: null };
     }
     
-    if (category === 'auto' && parts.length > 1) {
-      throw new Error(`Invalid: 'aido/auto' does not accept a model name. Use 'aido/cloud/<model>' or 'aido/local/<model>' instead.`);
-    }
-    
     const model = parts.slice(1).join('/');
     return { category, provider: null, model };
   }
