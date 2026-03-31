@@ -82,7 +82,7 @@ program
   .action(async (providerArg: string | undefined, opts: { sync: boolean }) => {
 const providers: Provider[] = providerArg
        ? [providerArg as Provider]
-       : ['zen', 'openai', 'google', 'groq', 'ollama', 'ollama-local', 'openrouter'];
+       : ['opencode', 'openai', 'google', 'groq', 'ollama', 'ollama-local', 'openrouter'];
 
     for (const provider of providers) {
       const keys = loadKeysForProvider(provider);
@@ -123,7 +123,7 @@ program
     clearExpiredLimits();
 
     // Show configured providers
-    const providers: Provider[] = ['zen', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local', 'openrouter'];
+    const providers: Provider[] = ['opencode', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local', 'openrouter'];
     console.log('Configured providers:\n');
     for (const p of providers) {
       const keys = loadKeysForProvider(p);
@@ -164,7 +164,7 @@ program
     const clearedModels = clearAllModelLimits();
     console.log(`[sync] Cleared ${clearedKeys} key limit${clearedKeys !== 1 ? 's' : ''} and ${clearedModels} model limit${clearedModels !== 1 ? 's' : ''}.`);
 
-    const providers: Provider[] = ['zen', 'openai', 'google', 'groq', 'ollama', 'ollama-local', 'openrouter'];
+    const providers: Provider[] = ['opencode', 'openai', 'google', 'groq', 'ollama', 'ollama-local', 'openrouter'];
     console.log('[sync] Refreshing models from all providers...\n');
 
     for (const provider of providers) {

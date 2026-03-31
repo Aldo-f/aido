@@ -1,10 +1,11 @@
-import { PROVIDER_CONFIGS, type Provider } from './detector.js';
+import { PROVIDER_CONFIGS, applyModelPrefix, type Provider } from './detector.js';
 import { getRotator, loadKeysForProvider, KeyRotator } from './rotator.js';
 import { logRequest as dbLogRequest, getFreeModels, getAllModels } from './db.js';
 import { logRequest as fileLogRequest } from './logger.js';
 import { toOllamaBody, fromOllamaResponse, toOllamaPath } from './ollama.js';
 import { PRIORITIES } from './priorities.js';
 import { tryKey } from './key-rotation.js';
+import { safeFetch } from './safe-fetch.js';
 
 export const AUTO_PRIORITY = PRIORITIES.auto;
 
@@ -89,10 +90,11 @@ export async function forwardAuto(
       let upstreamBody = body;
       try {
         const parsed = JSON.parse(body);
+        const prefixedModel = applyModelPrefix(provider, modelToTry);
         if (priorityType === 'cloud' || priorityType === 'local') {
-          parsed.model = modelToTry;
+          parsed.model = prefixedModel;
         } else if (!parsed.model || parsed.model === 'auto') {
-          parsed.model = modelToTry;
+          parsed.model = prefixedModel;
         }
         upstreamBody = JSON.stringify(parsed);
       } catch {}
@@ -156,7 +158,7 @@ export async function forwardAuto(
       hint: 'Add more API keys with: aido add <key>',
     }),
     headers: { 'content-type': 'application/json' },
-    usedProvider: 'zen',
+    usedProvider: 'opencode',
     usedModel: 'auto',
   };
 }
@@ -224,7 +226,7 @@ export async function forwardAutoFree(
 
       let res: Response;
       try {
-        res = await fetch(url, {
+        res = await safeFetch(url, {
           method,
           headers: {
             'content-type': 'application/json',

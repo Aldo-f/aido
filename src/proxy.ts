@@ -1,5 +1,5 @@
 import http from 'http';
-import { PROVIDER_CONFIGS, type Provider } from './detector.js';
+import { PROVIDER_CONFIGS, applyModelPrefix, type Provider } from './detector.js';
 import { getRotator } from './rotator.js';
 import { logRequest } from './db.js';
 import { toOllamaBody, fromOllamaResponse, toOllamaPath } from './ollama.js';
@@ -8,9 +8,10 @@ import { routeAidoModel } from './models/router.js';
 import { isPortInUse } from './port-check.js';
 import { writePid, readPid, deletePid, isStale } from './daemon.js';
 import { mergeWithCapabilities } from './model-capabilities.js';
+import { safeFetch } from './safe-fetch.js';
 
 const DEFAULT_PROVIDER: Provider =
-  (process.env.DEFAULT_PROVIDER as Provider) ?? 'zen';
+  (process.env.DEFAULT_PROVIDER as Provider) ?? 'opencode';
 
 const PORT = parseInt(process.env.PROXY_PORT ?? '4141', 10);
 
@@ -120,7 +121,7 @@ async function forwardRequest(
     if (parsed.model && typeof parsed.model === 'string') {
       const resolved = resolveProvider(path, body);
       if (resolved.model && resolved.provider !== 'auto') {
-        parsed.model = resolved.model;
+        parsed.model = applyModelPrefix(resolved.provider, resolved.model);
         upstreamBody = JSON.stringify(parsed);
       }
     }
@@ -138,7 +139,7 @@ async function forwardRequest(
   let model = modelForLogging; // Use the parsed model for logging
 
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method,
       headers: forwardHeaders,
       body: method !== 'GET' && method !== 'HEAD' ? upstreamBodyForOllama : undefined,

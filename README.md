@@ -72,8 +72,8 @@ aido --help
 ## Quick start
 
 ```bash
-# 1. Add your Zen key
-AIdo add sk-yourzenkey...
+# 1. Add your OpenCode key
+AIdo add sk-youropencodekey...
 
 # 2. Configure your tools (Claude Code + OpenCode)
 AIdo launch
@@ -91,13 +91,13 @@ Use `--only-free` to only use free models, or `--only-paid` to only use paid mod
 
 ```bash
 # Only use free models
-AIdo run "test free models" --provider zen --only-free
+AIdo run "test free models" --provider opencode --only-free
 
 # Only use paid models  
-AIdo run "use best model" --provider zen --only-paid
+AIdo run "use best model" --provider opencode --only-paid
 
 # Use both free and paid (default)
-AIdo run "hello" --provider zen
+AIdo run "hello" --provider opencode
 ```
 
 ---
@@ -109,7 +109,7 @@ AIdo run "hello" --provider zen
 Adds an API key. Provider is auto-detected from the key format.
 
 ```bash
-AIdo add sk-zen-key-here...
+AIdo add sk-opencode-key-here...
 AIdo add sk-ant-api03-anthropic-key...
 AIdo add sk-proj-openai-key...
 AIdo add sk-or-v1-openrouter-key...
@@ -120,7 +120,7 @@ AIdo add some-key --provider groq
 
 Stored in `.env` next to the project folder:
 ```
-ZEN_KEYS=key1,key2,key3
+OPENCODE_KEYS=key1,key2,key3
 ANTHROPIC_KEYS=key1
 ```
 
@@ -131,8 +131,8 @@ Sends a prompt to a model. Useful for quick testing.
 ```bash
 AIdo run "what is 2+2"
 AIdo run "write a haiku" --model mimo-v2-flash-free
-AIdo run "explain recursion" --provider zen --stream
-AIdo run "test free models" --provider zen --only-free  # Only use free models
+AIdo run "explain recursion" --provider opencode --stream
+AIdo run "test free models" --provider opencode --only-free  # Only use free models
 ```
 
 ### `AIdo models [provider]`
@@ -141,14 +141,14 @@ Fetches available models using your key. Results cached for 1 hour.
 
 ```bash
 AIdo models          # all configured providers
-AIdo models zen      # specific provider
+AIdo models opencode      # specific provider
 AIdo models --sync   # ignore cache, force refresh
 ```
 
 > Since the call is made with your own key, you see exactly which models your account can use.
 > A paid key may return more models than a free key.
 
-Free models on OpenCode Zen (at time of writing):
+Free models on OpenCode (at time of writing):
 
 | Model ID                  | Name                |
 |---------------------------|---------------------|
@@ -177,8 +177,8 @@ AIdo proxy
 Routes:
 | URL                  | Forwards to     |
 |----------------------|-----------------|
-| `/v1/...`            | Zen (default)   |
-| `/zen/v1/...`        | Zen explicit    |
+| `/v1/...`            | OpenCode (default)   |
+| `/opencode/v1/...`   | OpenCode explicit    |
 | `/openai/v1/...`     | OpenAI          |
 | `/anthropic/...`     | Anthropic       |
 
@@ -229,7 +229,7 @@ export ANTHROPIC_API_KEY="aido-proxy"
   "provider": {
     "aido": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "AIdo Proxy (Zen)",
+      "name": "AIdo Proxy",
       "options": {
         "baseURL": "http://localhost:4141/v1",
         "apiKey": "aido-proxy"
@@ -249,11 +249,11 @@ Shows configured providers and any rate-limited keys.
 AIdo status
 
 # Configured providers:
-#   zen          2 keys
+#   opencode          2 keys
 #   openai       1 key
 #
 # Rate-limited keys (1):
-#   zen          ...gooTF  (until 14:30:00)
+#   opencode          ...gooTF  (until 14:30:00)
 ```
 
 ### `AIdo stop`
@@ -280,7 +280,7 @@ Searches the internet for leaked API keys and validates them automatically.
 AIdo hunt                    # Search for keys (default: 3 valid keys, 60s timeout)
 AIdo hunt --limit 5          # Stop after 5 valid keys
 AIdo hunt --timeout 120      # Search for 2 minutes
-AIdo hunt --provider zen     # Only search for Zen keys
+AIdo hunt --provider opencode     # Only search for OpenCode keys
 AIdo hunt --provider anthropic  # Only search for Anthropic keys
 ```
 
@@ -332,7 +332,7 @@ Validates if an API key works.
 
 ```bash
 AIdo key:validate sk-xxx...
-AIdo key:validate sk-xxx... --provider zen
+AIdo key:validate sk-xxx... --provider opencode
 ```
 
 ### `AIdo clear`
@@ -360,7 +360,7 @@ AIdo clear
 |----------------------|------------|
 | `sk-ant-...`         | Anthropic  |
 | `sk-proj-...`        | OpenAI     |
-| `sk-` + 60+ chars    | Zen        |
+| `sk-` + 60+ chars    | OpenCode     |
 | `sk-` + shorter      | OpenAI     |
 | `gsk_...`            | Groq       |
 | `AIza...`            | Google     |

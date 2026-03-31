@@ -9,7 +9,7 @@ export interface ParsedAidoModel {
 }
 
 const KNOWN_CATEGORIES = ['auto', 'cloud', 'local'] as const;
-const KNOWN_PROVIDERS: Provider[] = ['zen', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local', 'openrouter'];
+const KNOWN_PROVIDERS: Provider[] = ['opencode', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local', 'openrouter'];
 
 export function parseAidoModel(path: string): ParsedAidoModel {
   if (!path || typeof path !== 'string') {
@@ -91,6 +91,19 @@ export function parseAidoModelName(modelName: string): ParsedAidoModel {
 
   if (trimmed.toLowerCase().startsWith('aido/')) {
     return parseAidoModel(trimmed);
+  }
+
+  // Check if it's a provider/model pattern (e.g., "opencode/big-pickle")
+  const parts = trimmed.split('/');
+  if (parts.length === 2) {
+    const potentialProvider = parts[0].toLowerCase();
+    if (KNOWN_PROVIDERS.includes(potentialProvider as Provider)) {
+      return {
+        category: 'provider',
+        provider: potentialProvider as Provider,
+        model: parts.slice(1).join('/'),
+      };
+    }
   }
 
   return {

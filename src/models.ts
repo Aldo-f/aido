@@ -2,6 +2,7 @@ import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { getDb } from './db.js';
 import { mergeWithCapabilities, type ModelCapabilities } from './model-capabilities.js';
 import { identifyFreeModels, type RawModel } from './free-discovery.js';
+import { safeFetch } from './safe-fetch.js';
 
 export interface ModelInfo {
   id: string;
@@ -11,7 +12,7 @@ export interface ModelInfo {
 }
 
 // Providers with a models listing endpoint
-const MODELS_ENDPOINT_PROVIDERS: Provider[] = ['zen', 'openai', 'groq', 'ollama', 'ollama-local'];
+const MODELS_ENDPOINT_PROVIDERS: Provider[] = ['opencode', 'openai', 'groq', 'ollama', 'ollama-local'];
 
 // Cache TTL: 1 hour
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -48,7 +49,7 @@ export async function fetchModelsDev(): Promise<{ [provider: string]: ProviderDa
   }
 
   try {
-    const res = await fetch('https://models.dev/api.json');
+    const res = await safeFetch('https://models.dev/api.json');
     const json = await res.json();
     modelsDevCache = { data: json, fetchedAt: Date.now() };
     return json;
@@ -136,7 +137,7 @@ export async function fetchModels(
 
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await safeFetch(url, {
       headers: { ...config.authHeader(key) },
     });
   } catch (err) {

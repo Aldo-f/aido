@@ -249,7 +249,7 @@ const GROQ_FREE_PATTERNS = [
 
 // Cache provider check functions for performance
 const PROVIDER_CHECKERS: Record<Provider, (modelId: string) => boolean> = {
-  zen: (modelId) => ZEN_SPECIAL_FREE_MODELS.has(modelId) || ZEN_FREE_PATTERN.test(modelId),
+  opencode: (modelId) => ZEN_SPECIAL_FREE_MODELS.has(modelId) || ZEN_FREE_PATTERN.test(modelId),
   openrouter: (modelId) => OPENROUTER_FREE_PATTERN.test(modelId),
   google: (modelId) => GOOGLE_FREE_PATTERNS.some(pattern => pattern.test(modelId)),
   groq: (modelId) => GROQ_FREE_PATTERNS.some(pattern => pattern.test(modelId)),

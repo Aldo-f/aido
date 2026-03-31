@@ -13,7 +13,7 @@ AIdo add <key> --provider <name>  # Override provider
 
 **Examples:**
 ```bash
-AIdo add sk-zen-key...
+AIdo add sk-opencode-key...
 AIdo add sk-ant-anthropic-key...
 AIdo add gsk_groq-key...
 AIdo add sk-proj-openai-key...
@@ -34,7 +34,7 @@ AIdo run "<prompt>" --stream     # Stream response
 ```bash
 AIdo run "what is 2+2"
 AIdo run "write a haiku" --model mimo-v2-flash-free
-AIdo run "explain recursion" --provider zen --stream
+AIdo run "explain recursion" --provider opencode --stream
 ```
 
 ### AIdo proxy
@@ -67,11 +67,10 @@ AIdo status
 **Output:**
 ```
 Configured providers:
-  zen          2 keys
-  openai       1 key
+  opencode     2 keys
 
 Rate-limited keys (1):
-  zen          ...gooTF  (until 14:30:00)
+  opencode     ...gooTF  (until 14:30:00)
 ```
 
 ### AIdo clear
@@ -125,7 +124,7 @@ AIdo hunt                           # Run in daemon mode (default)
 AIdo hunt --daemon=false            # Run once and exit
 AIdo hunt --limit 5                 # Stop after 5 valid keys
 AIdo hunt --timeout 120             # Search for 2 minutes
-AIdo hunt --provider zen            # Only search for Zen keys
+AIdo hunt --provider opencode            # Only search for OpenCode keys
 ```
 
 ### AIdo hunt:stop
@@ -142,7 +141,7 @@ Fetches available models using your key. Results cached for 1 hour.
 
 ```bash
 AIdo models              # All configured providers
-AIdo models zen          # Specific provider
+AIdo models opencode          # Specific provider
 AIdo models --sync       # Ignore cache, force refresh
 ```
 
@@ -152,8 +151,8 @@ The proxy forwards requests to upstream providers:
 
 | Endpoint | Provider |
 |----------|----------|
-| `/v1/...` | Zen (default) |
-| `/zen/v1/...` | Zen |
+| `/v1/...` | OpenCode (default) |
+| `/opencode/v1/...` | OpenCode |
 | `/openai/v1/...` | OpenAI |
 | `/anthropic/...` | Anthropic |
 
@@ -198,7 +197,7 @@ curl -X POST http://localhost:4141/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer aido-proxy" \
   -d '{
-    "model": "aido/zen/big-pickle",
+    "model": "aido/opencode/big-pickle",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 ```
@@ -207,7 +206,7 @@ curl -X POST http://localhost:4141/v1/chat/completions \
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ZEN_KEYS` | Zen API keys (comma-separated) | - |
+| `OPENCODE_KEYS` | OpenCode API keys (comma-separated) | - |
 | `OPENAI_KEYS` | OpenAI API keys | - |
 | `ANTHROPIC_KEYS` | Anthropic API keys | - |
 | `GROQ_KEYS` | Groq API keys | - |

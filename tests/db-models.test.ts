@@ -14,18 +14,18 @@ describe('db - models table', () => {
       const models = [{
         id: 'big-pickle',
         name: 'Big Pickle',
-        provider: 'zen',
+        provider: 'opencode',
         isFree: true,
         discoveredAt: Date.now(),
         expiresAt: Date.now() + 3600000,
       }];
 
-      saveModels('zen', models);
+      saveModels('opencode', models);
 
       const db = getDb();
       const row = db
         .prepare('SELECT model_id, is_free FROM models WHERE provider = ? AND model_id = ?')
-        .get('zen', 'big-pickle') as { model_id: string; is_free: number };
+        .get('opencode', 'big-pickle') as { model_id: string; is_free: number };
 
       expect(row).toBeDefined();
       expect(row.model_id).toBe('big-pickle');
@@ -59,7 +59,7 @@ describe('db - models table', () => {
         {
           id: 'big-pickle',
           name: 'Big Pickle',
-          provider: 'zen',
+          provider: 'opencode',
           isFree: true,
           discoveredAt: Date.now(),
           expiresAt: Date.now() + 3600000,
@@ -67,19 +67,19 @@ describe('db - models table', () => {
         {
           id: 'some-paid-model',
           name: 'Some Paid Model',
-          provider: 'zen',
+          provider: 'opencode',
           isFree: false,
           discoveredAt: Date.now(),
           expiresAt: Date.now() + 3600000,
         },
       ];
 
-      saveModels('zen', models);
+      saveModels('opencode', models);
 
       const db = getDb();
       const rows = db
         .prepare('SELECT model_id, is_free FROM models WHERE provider = ? ORDER BY model_id')
-        .all('zen') as Array<{ model_id: string; is_free: number }>;
+        .all('opencode') as Array<{ model_id: string; is_free: number }>;
 
       expect(rows).toHaveLength(2);
       expect(rows[0].model_id).toBe('big-pickle');
@@ -92,29 +92,29 @@ describe('db - models table', () => {
       const models = [{
         id: 'big-pickle',
         name: 'Big Pickle',
-        provider: 'zen',
+        provider: 'opencode',
         isFree: true,
         discoveredAt: Date.now(),
         expiresAt: Date.now() + 3600000,
       }];
 
-      saveModels('zen', models);
+      saveModels('opencode', models);
 
       const updatedModels = [{
         id: 'big-pickle',
         name: 'Big Pickle',
-        provider: 'zen',
+        provider: 'opencode',
         isFree: false,
         discoveredAt: Date.now(),
         expiresAt: Date.now() + 3600000,
       }];
 
-      saveModels('zen', updatedModels);
+      saveModels('opencode', updatedModels);
 
       const db = getDb();
       const row = db
         .prepare('SELECT is_free FROM models WHERE provider = ? AND model_id = ?')
-        .get('zen', 'big-pickle') as { is_free: number };
+        .get('opencode', 'big-pickle') as { is_free: number };
 
       expect(row.is_free).toBe(0);
     });
@@ -128,11 +128,11 @@ describe('db - models table', () => {
         INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?)
       `).run(
-        'zen', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() + 3600000,
-        'zen', 'some-paid-model', 'Some Paid Model', 0, Date.now(), Date.now() + 3600000,
+        'opencode', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() + 3600000,
+        'opencode', 'some-paid-model', 'Some Paid Model', 0, Date.now(), Date.now() + 3600000,
       );
 
-      const freeModels = getFreeModels('zen');
+      const freeModels = getFreeModels('opencode');
 
       expect(freeModels).toHaveLength(1);
       expect(freeModels[0].id).toBe('big-pickle');
@@ -145,15 +145,15 @@ describe('db - models table', () => {
       db.prepare(`
         INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run('zen', 'some-paid-model', 'Some Paid Model', 0, Date.now(), Date.now() + 3600000);
+      `).run('opencode', 'some-paid-model', 'Some Paid Model', 0, Date.now(), Date.now() + 3600000);
 
-      const freeModels = getFreeModels('zen');
+      const freeModels = getFreeModels('opencode');
 
       expect(freeModels).toHaveLength(0);
     });
 
     it('returns empty array when table is empty', () => {
-      const freeModels = getFreeModels('zen');
+      const freeModels = getFreeModels('opencode');
 
       expect(freeModels).toHaveLength(0);
     });
@@ -165,15 +165,15 @@ describe('db - models table', () => {
         INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?)
       `).run(
-        'zen', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() + 3600000,
+        'opencode', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() + 3600000,
         'openai', 'gpt-4o-mini', 'GPT-4o Mini', 1, Date.now(), Date.now() + 3600000,
       );
 
-      const zenFreeModels = getFreeModels('zen');
+      const opencodeFreeModels = getFreeModels('opencode');
       const openaiFreeModels = getFreeModels('openai');
 
-      expect(zenFreeModels).toHaveLength(1);
-      expect(zenFreeModels[0].id).toBe('big-pickle');
+      expect(opencodeFreeModels).toHaveLength(1);
+      expect(opencodeFreeModels[0].id).toBe('big-pickle');
       expect(openaiFreeModels).toHaveLength(1);
       expect(openaiFreeModels[0].id).toBe('gpt-4o-mini');
     });
@@ -184,9 +184,9 @@ describe('db - models table', () => {
       db.prepare(`
         INSERT INTO models (provider, model_id, model_name, is_free, discovered_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run('zen', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() - 1000);
+      `).run('opencode', 'big-pickle', 'Big Pickle', 1, Date.now(), Date.now() - 1000);
 
-      const freeModels = getFreeModels('zen');
+      const freeModels = getFreeModels('opencode');
 
       expect(freeModels).toHaveLength(0);
     });

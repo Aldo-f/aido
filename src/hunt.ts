@@ -146,7 +146,7 @@ export async function huntKeys(opts: HuntOptions): Promise<{ found: number; adde
             console.log(`[hunt] ✓ Key VALID! (provider: ${detectedProvider})`);
             found.push(key);
             
-            const targetProvider = provider || 'zen';
+                const targetProvider = provider || 'opencode';
             addKeyToEnv(targetProvider, key);
             console.log(`[hunt] Added to ${targetProvider}`);
             
@@ -229,7 +229,7 @@ export async function huntKeys(opts: HuntOptions): Promise<{ found: number; adde
                 console.log(`[hunt] ✓ Key VALID! (provider: ${detectedProvider})`);
                 found.push(key);
                 
-                const targetProvider = provider || 'zen';
+            const targetProvider = provider || 'opencode';
                 addKeyToEnv(targetProvider, key);
                 console.log(`[hunt] Added to ${targetProvider}`);
               }
@@ -391,7 +391,7 @@ async function searchWithPlaywrightAlternative(query: string): Promise<SearchPag
 export async function validateKey(key: string, providerFilter?: string): Promise<boolean> {
   const providers: Provider[] = providerFilter 
     ? [providerFilter as Provider] 
-    : ['zen', 'openai', 'anthropic', 'groq', 'google'];
+    : ['opencode', 'openai', 'anthropic', 'groq', 'google'];
 
   for (const provider of providers) {
     const config = PROVIDER_CONFIGS[provider];

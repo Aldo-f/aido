@@ -9,7 +9,7 @@ const { routeAidoModel } = await import('../src/models/router.js');
 describe('run - specific provider routing', () => {
   beforeEach(() => {
     resetDb();
-    vi.stubEnv('ZEN_KEYS', '');
+    vi.stubEnv('OPENCODE_KEYS', '');
     vi.stubEnv('OPENAI_KEYS', '');
     vi.stubEnv('ANTHROPIC_KEYS', '');
     vi.stubEnv('GROQ_KEYS', '');
@@ -22,16 +22,16 @@ describe('run - specific provider routing', () => {
     vi.unstubAllEnvs();
   });
 
-  it('should parse aido/zen/model format correctly', () => {
-    const parsed = parseAidoModelName('aido/zen/minimax-m2.5-free');
+  it('should parse aido/opencode/model format correctly', () => {
+    const parsed = parseAidoModelName('aido/opencode/minimax-m2.5-free');
     expect(parsed.category).toBe('provider');
-    expect(parsed.provider).toBe('zen');
+    expect(parsed.provider).toBe('opencode');
     expect(parsed.model).toBe('minimax-m2.5-free');
   });
 
-  it('should route aido/zen/model to specific provider, not auto-route', () => {
-    const route = routeAidoModel('aido/zen/minimax-m2.5-free');
-    expect(route.provider).toBe('zen');
+  it('should route aido/opencode/model to specific provider, not auto-route', () => {
+    const route = routeAidoModel('aido/opencode/minimax-m2.5-free');
+    expect(route.provider).toBe('opencode');
     expect(route.model).toBe('minimax-m2.5-free');
     expect(route.isAuto).toBe(false);
   });
@@ -50,17 +50,17 @@ describe('run - specific provider routing', () => {
   });
 
   it('should verify specific provider routing logic', () => {
-    saveModels('zen', [{
+    saveModels('opencode', [{
       id: 'minimax-m2.5-free',
       name: 'MiniMax M2.5 Free',
-      provider: 'zen',
+      provider: 'opencode',
       isFree: true,
       discoveredAt: Date.now(),
       expiresAt: Date.now() + 3600000,
     }]);
 
-    const route = routeAidoModel('aido/zen/minimax-m2.5-free');
-    expect(route.provider).toBe('zen');
+    const route = routeAidoModel('aido/opencode/minimax-m2.5-free');
+    expect(route.provider).toBe('opencode');
     expect(route.isAuto).toBe(false);
   });
 });

@@ -33,7 +33,7 @@ describe('analytics API', () => {
   });
 
   it('GET /api/models returns array', async () => {
-    logRequest('sk-test', 'zen', 200, 'test-model');
+    logRequest('sk-test', 'opencode', 200, 'test-model');
     const res = await fetch(`http://localhost:${PORT}/api/models`);
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -41,7 +41,7 @@ describe('analytics API', () => {
   });
 
   it('GET /api/logs returns array', async () => {
-    logRequest('sk-test', 'zen', 200);
+    logRequest('sk-test', 'opencode', 200);
     const res = await fetch(`http://localhost:${PORT}/api/logs`);
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -69,7 +69,7 @@ describe('analytics API', () => {
 
   it('GET /api/logs respects limit parameter', async () => {
     for (let i = 0; i < 10; i++) {
-      logRequest(`sk-${i}`, 'zen', 200);
+      logRequest(`sk-${i}`, 'opencode', 200);
     }
     const res = await fetch(`http://localhost:${PORT}/api/logs?limit=5`);
     const data = await res.json();

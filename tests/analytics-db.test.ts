@@ -41,9 +41,9 @@ describe('analytics-db', () => {
     });
 
     it('returns correct count after logging requests', () => {
-      logRequest('sk-test', 'zen', 200);
-      logRequest('sk-test', 'zen', 200);
-      logRequest('sk-test', 'zen', 429);
+      logRequest('sk-test', 'opencode', 200);
+      logRequest('sk-test', 'opencode', 200);
+      logRequest('sk-test', 'opencode', 429);
       expect(getTotalRequests()).toBe(3);
     });
   });
@@ -54,9 +54,9 @@ describe('analytics-db', () => {
     });
 
     it('groups requests by model', () => {
-      logRequest('sk-test', 'zen', 200, 'big-pickle');
-      logRequest('sk-test', 'zen', 200, 'big-pickle');
-      logRequest('sk-test', 'zen', 429, 'mimo-v2-flash-free');
+      logRequest('sk-test', 'opencode', 200, 'big-pickle');
+      logRequest('sk-test', 'opencode', 200, 'big-pickle');
+      logRequest('sk-test', 'opencode', 429, 'mimo-v2-flash-free');
 
       const stats = getRequestsByModel();
       expect(stats).toHaveLength(2);
@@ -72,8 +72,8 @@ describe('analytics-db', () => {
     });
 
     it('calculates avg latency per model', () => {
-      logRequest('sk-test', 'zen', 200, 'test-model', 'proxy', 100);
-      logRequest('sk-test', 'zen', 200, 'test-model', 'proxy', 200);
+      logRequest('sk-test', 'opencode', 200, 'test-model', 'proxy', 100);
+      logRequest('sk-test', 'opencode', 200, 'test-model', 'proxy', 200);
 
       const stats = getRequestsByModel();
       const model = stats.find((s) => s.model === 'test-model');
@@ -87,14 +87,14 @@ describe('analytics-db', () => {
     });
 
     it('groups requests by provider', () => {
-      logRequest('sk-test', 'zen', 200, 'a');
+      logRequest('sk-test', 'opencode', 200, 'a');
       logRequest('sk-test', 'openai', 200, 'b');
 
       const stats = getRequestsByProvider();
       expect(stats).toHaveLength(2);
 
-      const zen = stats.find((s) => s.provider === 'zen');
-      expect(zen?.count).toBe(1);
+      const opencode = stats.find((s) => s.provider === 'opencode');
+      expect(opencode?.count).toBe(1);
 
       const openai = stats.find((s) => s.provider === 'openai');
       expect(openai?.count).toBe(1);
@@ -107,9 +107,9 @@ describe('analytics-db', () => {
     });
 
     it('groups requests by source (run vs proxy)', () => {
-      logRequest('sk-test', 'zen', 200, 'a', 'run', 100);
-      logRequest('sk-test', 'zen', 200, 'b', 'proxy', 200);
-      logRequest('sk-test', 'zen', 200, 'c', 'proxy', 300);
+      logRequest('sk-test', 'opencode', 200, 'a', 'run', 100);
+      logRequest('sk-test', 'opencode', 200, 'b', 'proxy', 200);
+      logRequest('sk-test', 'opencode', 200, 'c', 'proxy', 300);
 
       const stats = getRequestsBySource();
       expect(stats).toHaveLength(2);
@@ -132,9 +132,9 @@ describe('analytics-db', () => {
       const getDb = db.getDb;
       
       getDb().prepare('INSERT INTO request_log (key, provider, status, model, source, latency_ms, ts) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run('sk-a', 'zen', 200, 'a', 'proxy', 100, 1000);
+        .run('sk-a', 'opencode', 200, 'a', 'proxy', 100, 1000);
       getDb().prepare('INSERT INTO request_log (key, provider, status, model, source, latency_ms, ts) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run('sk-b', 'zen', 200, 'b', 'run', 200, 2000);
+        .run('sk-b', 'opencode', 200, 'b', 'run', 200, 2000);
 
       const logs = getRecentLogs(10);
       expect(logs[0].model).toBe('b');
@@ -143,7 +143,7 @@ describe('analytics-db', () => {
 
     it('respects limit parameter', () => {
       for (let i = 0; i < 100; i++) {
-        logRequest(`sk-${i}`, 'zen', 200, `model-${i}`);
+        logRequest(`sk-${i}`, 'opencode', 200, `model-${i}`);
       }
 
       const logs = getRecentLogs(5);
@@ -152,7 +152,7 @@ describe('analytics-db', () => {
 
     it('uses default limit of 50', () => {
       for (let i = 0; i < 60; i++) {
-        logRequest(`sk-${i}`, 'zen', 200);
+        logRequest(`sk-${i}`, 'opencode', 200);
       }
 
       const logs = getRecentLogs();
@@ -166,28 +166,28 @@ describe('analytics-db', () => {
     });
 
     it('returns 100 for all successful', () => {
-      logRequest('sk-test', 'zen', 200);
-      logRequest('sk-test', 'zen', 200);
+      logRequest('sk-test', 'opencode', 200);
+      logRequest('sk-test', 'opencode', 200);
       expect(getSuccessRate()).toBe(100);
     });
 
     it('returns 0 for all failures', () => {
-      logRequest('sk-test', 'zen', 429);
-      logRequest('sk-test', 'zen', 500);
+      logRequest('sk-test', 'opencode', 429);
+      logRequest('sk-test', 'opencode', 500);
       expect(getSuccessRate()).toBe(0);
     });
 
     it('calculates correct percentage for mixed', () => {
-      logRequest('sk-test', 'zen', 200); // success
-      logRequest('sk-test', 'zen', 429); // failure
-      logRequest('sk-test', 'zen', 200); // success
-      logRequest('sk-test', 'zen', 500); // failure
+      logRequest('sk-test', 'opencode', 200); // success
+      logRequest('sk-test', 'opencode', 429); // failure
+      logRequest('sk-test', 'opencode', 200); // success
+      logRequest('sk-test', 'opencode', 500); // failure
       expect(getSuccessRate()).toBe(50);
     });
 
     it('treats 2xx as success', () => {
-      logRequest('sk-test', 'zen', 201);
-      logRequest('sk-test', 'zen', 299);
+      logRequest('sk-test', 'opencode', 201);
+      logRequest('sk-test', 'opencode', 299);
       expect(getSuccessRate()).toBe(100);
     });
   });
@@ -198,19 +198,19 @@ describe('analytics-db', () => {
     });
 
     it('returns 0 when all latency is 0', () => {
-      logRequest('sk-test', 'zen', 200);
+      logRequest('sk-test', 'opencode', 200);
       expect(getAvgLatency()).toBe(0);
     });
 
     it('calculates correct average', () => {
-      logRequest('sk-test', 'zen', 200, undefined, undefined, 100);
-      logRequest('sk-test', 'zen', 200, undefined, undefined, 200);
+      logRequest('sk-test', 'opencode', 200, undefined, undefined, 100);
+      logRequest('sk-test', 'opencode', 200, undefined, undefined, 200);
       expect(getAvgLatency()).toBe(150);
     });
 
     it('ignores zero latency values', () => {
-      logRequest('sk-test', 'zen', 200, undefined, undefined, 0);  // should be ignored
-      logRequest('sk-test', 'zen', 200, undefined, undefined, 100);
+      logRequest('sk-test', 'opencode', 200, undefined, undefined, 0);  // should be ignored
+      logRequest('sk-test', 'opencode', 200, undefined, undefined, 100);
       expect(getAvgLatency()).toBe(100);
     });
   });

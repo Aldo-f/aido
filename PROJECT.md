@@ -33,10 +33,10 @@ aido/
 **Flow:** `CLI → run() → API call → Response`
 
 ```
-User runs: AIdo run -m aido/zen/big-pickle "Hello"
+User runs: AIdo run -m aido/opencode/big-pickle "Hello"
 
 1. cli.ts parses arguments
-   ├─ provider = 'zen' (from model name)
+   ├─ provider = 'opencode' (from model name)
    ├─ model = 'big-pickle'
    └─ prompt = "Hello"
 
@@ -94,16 +94,16 @@ User runs: aido proxy
 Server starts on http://localhost:4141
 
 Client sends: POST http://localhost:4141/v1/chat/completions
-Body: {"model": "aido/zen/big-pickle", "messages": [...]}
+Body: {"model": "aido/opencode/big-pickle", "messages": [...]}
 
 1. proxy.ts receives request
    ├─ Parses model name from request body
    ├─ Routes to appropriate handler based on URL path
 
 2. Router (src/models/router.ts) parses model name:
-   ├─ "aido/zen/big-pickle" → provider='zen', model='big-pickle'
+   ├─ "aido/opencode/big-pickle" → provider='opencode', model='big-pickle'
    ├─ "aido/auto" → provider='auto', model='auto'
-   ├─ "aido/cloud" → provider='zen', model='auto' (cloud priority)
+   ├─ "aido/cloud" → provider='opencode', model='auto' (cloud priority)
    └─ "aido/local" → provider='ollama-local', model='auto'
 
 3. Auto-routing (src/auto.ts):
@@ -138,7 +138,7 @@ Key Points:
 
 **Table: `models`** (renamed from `free_models`)
 ```sql
-provider      TEXT    NOT NULL    -- 'zen', 'openai', etc.
+provider      TEXT    NOT NULL    -- 'opencode', 'openai', etc.
 model_id      TEXT    NOT NULL    -- 'big-pickle', 'gpt-4o'
 model_name    TEXT    NOT NULL    -- Display name
 isFree        INTEGER NOT NULL    -- 1 = free, 0 = paid
@@ -154,7 +154,7 @@ PRIMARY KEY (provider, model_id)
 ```typescript
 function identifyFreeModels(provider: string, models: RawModel[]): FreeModel[] {
   switch (provider) {
-    case 'zen':
+    case 'opencode':
       // Free if ends with '-free' OR is 'big-pickle'
       return models.map(m => ({
         ...m,
@@ -247,7 +247,7 @@ class KeyRotator {
 When making API request:
 
 1. Get rotator for provider
-   rotator = getRotator('zen')
+   rotator = getRotator('opencode')
 
 2. Get next available key
    key = rotator.next()
@@ -267,36 +267,36 @@ When making API request:
 
 ## 6. REQUEST FLOWS DETAILED
 
-### 6.1 Flow: `AIdo run -m aido/zen/minimax-m2.5-free "Hello"`
+### 6.1 Flow: `AIdo run -m aido/opencode/minimax-m2.5-free "Hello"`
 
 ```
 CLI Input:
   command: run
-  model: aido/zen/minimax-m2.5-free
+  model: aido/opencode/minimax-m2.5-free
   prompt: "Hello"
 
 Processing in cli.ts:
-  1. Parse model name: "aido/zen/minimax-m2.5-free"
-     ├─ provider = 'zen' (from path)
+  1. Parse model name: "aido/opencode/minimax-m2.5-free"
+     ├─ provider = 'opencode' (from path)
      └─ model = 'minimax-m2.5-free' (from path)
 
-  2. Call run(prompt, { provider: 'zen', model: 'minimax-m2.5-free' })
+  2. Call run(prompt, { provider: 'opencode', model: 'minimax-m2.5-free' })
 
 Processing in run.ts:
-  1. Get free models for 'zen' provider
-     freeModels = getFreeModels('zen')
+  1. Get free models for 'opencode' provider
+     freeModels = getFreeModels('opencode')
      // Returns array of models where isFree=1
 
   2. Select model
-     selectedModel = model ?? (freeModels[0]?.id ?? DEFAULT_MODELS['zen'])
+     selectedModel = model ?? (freeModels[0]?.id ?? DEFAULT_MODELS['opencode'])
      // Since model IS specified: selectedModel = 'minimax-m2.5-free'
      // NOT from freeModels array!
 
   3. Get API key
-     key = rotator.next()  // Gets next available key for zen
+     key = rotator.next()  // Gets next available key for opencode
 
   4. Make API call
-     POST https://opencode.ai/zen/v1/chat/completions
+     POST https://opencode.ai/opencode/v1/chat/completions
      Body: {"model": "minimax-m2.5-free", "messages": [...]}
 
   5. Return response to user
@@ -327,14 +327,14 @@ Processing in run.ts:
      ├─ forwardAuto() is called
      └─ This tries multiple providers, not just one
 
-  3. If provider is specific (e.g., 'zen'):
-     ├─ Gets all models for 'zen' from DB
+  3. If provider is specific (e.g., 'opencode'):
+     ├─ Gets all models for 'opencode' from DB
      ├─ Filters by strategy (free/paid/both)
      ├─ Tries each model until one succeeds
      └─ Falls back to DEFAULT_MODELS[provider] if all fail
 ```
 
-**✅ CORRECT**: If you specify `-p zen` without `-m`, it will try free models first, then paid, until one succeeds.
+**✅ CORRECT**: If you specify `-p opencode` without `-m`, it will try free models first, then paid, until one succeeds.
 
 ---
 
@@ -343,19 +343,19 @@ Processing in run.ts:
 ```
 Client sends:
   POST http://localhost:4141/v1/chat/completions
-  Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
+  Body: {"model": "aido/opencode/minimax-m2.5-free", "messages": [...]}
 
 Processing in proxy.ts:
   1. Receive request
   2. Parse body JSON
-  3. Extract model name: "aido/zen/minimax-m2.5-free"
+  3. Extract model name: "aido/opencode/minimax-m2.5-free"
 
 Processing in router.ts:
-  parseAidoModel("aido/zen/minimax-m2.5-free")
-  Returns: { provider: 'zen', model: 'minimax-m2.5-free', priorityType: 'auto' }
+  parseAidoModel("aido/opencode/minimax-m2.5-free")
+  Returns: { provider: 'opencode', model: 'minimax-m2.5-free', priorityType: 'auto' }
 
 Processing in auto.ts (forwardAuto):
-  1. rotator = getRotator('zen')
+  1. rotator = getRotator('opencode')
   2. key = rotator.next()
   3. Make API call with model='minimax-m2.5-free'
   4. Return response
@@ -371,9 +371,9 @@ Processing in auto.ts (forwardAuto):
 
 | Scenario | Expected Behavior | Implementation |
 |----------|-------------------|----------------|
-| `AIdo run -m aido/zen/model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
-| `AIdo run -p zen -m model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
-| `AIdo run -p zen "hi"` | Tries free models, then paid, until success | ✅ Fallback loop in run() |
+| `AIdo run -m aido/opencode/model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
+| `AIdo run -p opencode -m model "hi"` | Uses `model` directly, validates exists | ✅ getModel() checks DB |
+| `AIdo run -p opencode "hi"` | Tries free models, then paid, until success | ✅ Fallback loop in run() |
 | `AIdo run "hi"` | Uses auto-routing across providers | ✅ forwardAuto() |
 
 **Model Validation** (src/run.ts lines 62-68):
@@ -406,14 +406,14 @@ if (all models fail) exit with error
 
 | Model Name | Expected Provider | Potential Bug |
 |------------|-------------------|---------------|
-| `aido/zen/big-pickle` | zen | ❌ If router doesn't parse correctly |
+| `aido/opencode/big-pickle` | opencode | ❌ If router doesn't parse correctly |
 | `aido/auto` | auto (triggers forwardAuto) | ❌ If treated as specific provider |
 | `big-pickle` (no prefix) | Depends on context | ❌ Ambiguous |
 
 **Check in src/models/router.ts**:
 ```typescript
 export function parseAidoModel(path: string): ParsedAidoModel {
-  // Should handle: "aido/zen/big-pickle", "aido/auto", "big-pickle"
+  // Should handle: "aido/opencode/big-pickle", "aido/auto", "big-pickle"
 }
 ```
 
@@ -421,14 +421,14 @@ export function parseAidoModel(path: string): ParsedAidoModel {
 
 | Scenario | Expected | Potential Bug |
 |----------|----------|---------------|
-| Zen model ends with `-free` | isFree = true | ❌ If regex doesn't match |
-| Zen model is `big-pickle` | isFree = true | ❌ If special case not handled |
+| Opencode model ends with `-free` | isFree = true | ❌ If regex doesn't match |
+| Opencode model is `big-pickle` | isFree = true | ❌ If special case not handled |
 | OpenRouter model ends with `:free` | isFree = true | ❌ If regex doesn't match |
 | Google model is `gemini-1.5-flash` | isFree = true | ❌ If not in free list |
 
 **Check in src/free-discovery.ts**:
 ```typescript
-case 'zen':
+case 'opencode':
   return m.id.endsWith('-free') || m.id === 'big-pickle';
 case 'openrouter':
   return m.id.endsWith(':free');
@@ -463,10 +463,10 @@ export function isRateLimited(key: string): boolean {
 ```bash
 # Direct execution (one-time)
 AIdo run "Hello"                    # Auto-route to best provider
-AIdo run -m aido/zen/big-pickle "Hello"  # Specific model (validated)
-AIdo run -p zen "Hello"             # Specific provider, tries free then paid
-AIdo run -p zen --only-free "Hello" # Only try free models
-AIdo run -p zen --only-paid "Hello" # Only try paid models
+AIdo run -m aido/opencode/big-pickle "Hello"  # Specific model (validated)
+AIdo run -p opencode "Hello"             # Specific provider, tries free then paid
+AIdo run -p opencode --only-free "Hello" # Only try free models
+AIdo run -p opencode --only-paid "Hello" # Only try paid models
 
 # Proxy server (continuous)
 AIdo proxy                          # Start proxy on port 4141
@@ -474,11 +474,11 @@ AIdo stop                           # Stop proxy
 
 # Model management
 AIdo models                         # List all models (cached 1 hour)
-AIdo models zen                     # List models for specific provider
+AIdo models opencode                     # List models for specific provider
 AIdo models --sync                  # Force refresh cache
 
 # Key management
-AIdo add sk-zen-key...              # Add API key
+AIdo add sk-opencode-key...              # Add API key
 AIdo status                         # Show configured providers & rate limits
 AIdo clear                          # Clear all rate limits
 
@@ -493,7 +493,7 @@ AIdo hunt:stop                      # Stop hunt daemon
 
 | Format | Provider | Example |
 |--------|----------|---------|
-| `aido/zen/<model>` | Zen | `aido/zen/big-pickle` |
+| `aido/opencode/<model>` | Opencode | `aido/opencode/big-pickle` |
 | `aido/openai/<model>` | OpenAI | `aido/openai/gpt-4o-mini` |
 | `aido/anthropic/<model>` | Anthropic | `aido/anthropic/claude-haiku` |
 | `aido/groq/<model>` | Groq | `aido/groq/llama-3.1-8b-instant` |
@@ -510,7 +510,7 @@ AIdo hunt:stop                      # Stop hunt daemon
 | Command | Result |
 |---------|--------|
 | `AIdo run -m minimax-m2.5-free "hi"` | ❌ ERROR: Unknown category/provider |
-| `AIdo run -m aido/zen/minimax-m2.5-free "hi"` | ✅ Uses Zen provider with that model |
+| `AIdo run -m aido/opencode/minimax-m2.5-free "hi"` | ✅ Uses Opencode provider with that model |
 | `AIdo run -m aido/auto/minimax-m2.5-free "hi"` | ✅ Checks ALL providers for that model |
 
 ---
@@ -520,18 +520,18 @@ AIdo hunt:stop                      # Stop hunt daemon
 ### 9.1 Complete Request Flow (AIdo run)
 
 ```
-User Input: AIdo run -m aido/zen/minimax-m2.5-free "Hello"
+User Input: AIdo run -m aido/opencode/minimax-m2.5-free "Hello"
 
     ┌─────────────────────────────────────────────────────────┐
     │ 1. cli.ts: Parse command                                │
-    │    ├─ provider = 'zen'                                  │
+    │    ├─ provider = 'opencode'                                  │
     │    └─ model = 'minimax-m2.5-free'                       │
     └────────────────────┬────────────────────────────────────┘
                          │
                          ▼
     ┌─────────────────────────────────────────────────────────┐
     │ 2. run.ts: Execute request                              │
-    │    ├─ freeModels = getFreeModels('zen')                 │
+    │    ├─ freeModels = getFreeModels('opencode')                 │
     │    ├─ selectedModel = model ?? freeModels[0] ?? default │
     │    │   → selectedModel = 'minimax-m2.5-free' (from -m)  │
     │    ├─ key = rotator.next()                              │
@@ -556,7 +556,7 @@ User Input: AIdo run -m aido/zen/minimax-m2.5-free "Hello"
 
 ```
 Client: POST http://localhost:4141/v1/chat/completions
-Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
+Body: {"model": "aido/opencode/minimax-m2.5-free", "messages": [...]}
 
     ┌─────────────────────────────────────────────────────────┐
     │ 1. proxy.ts: Receive HTTP request                       │
@@ -565,14 +565,14 @@ Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
                          ▼
     ┌─────────────────────────────────────────────────────────┐
     │ 2. router.ts: Parse model name                          │
-    │    parseAidoModel("aido/zen/minimax-m2.5-free")         │
-    │    → { provider: 'zen', model: 'minimax-m2.5-free' }    │
+    │    parseAidoModel("aido/opencode/minimax-m2.5-free")         │
+    │    → { provider: 'opencode', model: 'minimax-m2.5-free' }    │
     └────────────────────┬────────────────────────────────────┘
                          │
                          ▼
     ┌─────────────────────────────────────────────────────────┐
     │ 3. auto.ts: forwardAuto()                               │
-    │    ├─ rotator = getRotator('zen')                       │
+    │    ├─ rotator = getRotator('opencode')                       │
     │    ├─ key = rotator.next()                              │
     │    ├─ API call with model='minimax-m2.5-free'           │
     │    └─ Return response to client                         │
@@ -600,7 +600,7 @@ Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
                          ▼
     ┌─────────────────────────────────────────────────────────┐
     │ 2. identifyFreeModels(provider, models)                 │
-    │    ├─ Zen: endsWith('-free') OR id === 'big-pickle'     │
+    │    ├─ Opencode: endsWith('-free') OR id === 'big-pickle'     │
     │    ├─ OpenRouter: endsWith(':free')                     │
     │    ├─ Google: check against free model list             │
     │    └─ Others: isFree = false                            │
@@ -616,7 +616,7 @@ Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
                          ▼
     ┌─────────────────────────────────────────────────────────┐
     │ 4. User runs: AIdo run "Hello"                          │
-    │    getFreeModels('zen')                                 │
+    │    getFreeModels('opencode')                                 │
     │    SELECT * FROM models WHERE isFree=1                  │
     └─────────────────────────────────────────────────────────┘
 ```
@@ -651,7 +651,7 @@ Body: {"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
 ### Scenario 1: User wants to use a specific free model
 
 ```bash
-AIdo run -m aido/zen/minimax-m2.5-free "Hello"
+AIdo run -m aido/opencode/minimax-m2.5-free "Hello"
 ```
 
 **Expected**: Uses `minimax-m2.5-free` directly (from -m flag)
@@ -660,10 +660,10 @@ AIdo run -m aido/zen/minimax-m2.5-free "Hello"
 ### Scenario 2: User wants to use first available free model
 
 ```bash
-AIdo run -p zen "Hello"
+AIdo run -p opencode "Hello"
 ```
 
-**Expected**: Uses first model from `getFreeModels('zen')`
+**Expected**: Uses first model from `getFreeModels('opencode')`
 **Check**: src/run.ts line 69 - `freeModels[0].id`
 
 ### Scenario 3: User wants auto-routing across providers
@@ -678,7 +678,7 @@ AIdo run "Hello"
 ### Scenario 4: User wants to try only free models across all providers
 
 ```bash
-AIdo run --provider zen --only-free "Hello"
+AIdo run --provider opencode --only-free "Hello"
 ```
 
 **Expected**: Triggers `forwardAutoFree()` which loops through all providers
@@ -689,7 +689,7 @@ AIdo run --provider zen --only-free "Hello"
 ```bash
 # Client sends:
 POST http://localhost:4141/v1/chat/completions
-{"model": "aido/zen/minimax-m2.5-free", "messages": [...]}
+{"model": "aido/opencode/minimax-m2.5-free", "messages": [...]}
 
 # Expected: Uses minimax-m2.5-free directly
 ```
@@ -703,7 +703,7 @@ POST http://localhost:4141/v1/chat/completions
 ### 12.1 .env (API Keys)
 
 ```
-ZEN_KEYS=sk-zen-key1,sk-zen-key2
+OPENCODE_KEYS=sk-opencode-key1,sk-opencode-key2
 OPENAI_KEYS=sk-proj-key1
 ANTHROPIC_KEYS=sk-ant-key1
 GROQ_KEYS=gsk_key1

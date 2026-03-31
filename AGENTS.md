@@ -13,7 +13,7 @@ AIdo is a local API key rotation proxy for LLM providers. Automatically rotates 
 ### Key Features
 - **Automatic Key Rotation**: Switches to next available key when rate limited
 - **Free Model Discovery**: Automatically discovers and uses free-tier models
-- **Multi-Provider Support**: Zen, OpenAI, Anthropic, Groq, Google, Ollama, OpenRouter
+- **Multi-Provider Support**: OpenCode, OpenAI, Anthropic, Groq, Google, Ollama, OpenRouter
 - **Model-Specific Rate Limiting**: Tracks rate limits per model, not just per key
 - **WAL Mode SQLite**: Concurrent access support for proxy + CLI simultaneously
 
@@ -56,7 +56,7 @@ aido/
 |--------|------|----------|------|
 | cli.ts | CLI | src/cli.ts | Commands: add, run (with --only-free/--only-paid), models, proxy, launch, status, clear, sync, stop, hunt |
 | rotator.ts | Module | src/rotator.ts | Key loading, rotation, cooldowns, model-specific rate limiting |
-| router.ts | Module | src/models/router.ts | Parses aido/zen/big-pickle → provider |
+| router.ts | Module | src/models/router.ts | Parses aido/opencode/big-pickle → provider |
 | proxy.ts | Module | src/proxy.ts | HTTP server, forwards requests |
 | auto.ts | Module | src/auto.ts | forwardAuto(), forwardAutoFree() for cross-provider free model discovery |
 | free-discovery.ts | Module | src/free-discovery.ts | identifyFreeModels(), discoverFreeModels() |
@@ -91,7 +91,7 @@ aido/
 npm test                    # Run tests (208)
 npm run proxy               # Start proxy
 ./aido add <key>           # Add API key
-AIdo run "test" --provider zen --only-free  # Use free models only
+AIdo run "test" --provider opencode --only-free  # Use free models only
 AIdo launch --target opencode  # Configure OpenCode
 AIdo hunt                  # Start hunt daemon
 ```
@@ -125,6 +125,6 @@ CREATE TABLE model_limits (
 
 - Node.js v22+ required (SQLite built-in)
 - Port default: 4141
-- Model format: `aido/zen/big-pickle`, `aido/auto`, `aido/local`
+- Model format: `aido/opencode/big-pickle`, `aido/auto`, `aido/local`
 - SQLite WAL mode enabled for concurrent proxy + CLI access
 - Free models cached in DB with 1-hour TTL

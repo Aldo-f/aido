@@ -1,10 +1,20 @@
 {
-  "active_plan": "/mnt/storage/Documents/GitCode/aido/.sisyphus/plans/fix-f3-verification-issues.md",
-  "started_at": "2026-03-19T22:10:17.412Z",
+  "active_plan": "/mnt/storage/Documents/GitCode/aido/.sisyphus/plans/zen-model-prefix-fix.md",
+  "started_at": "2026-03-21T17:27:05.194Z",
   "session_ids": [
-    "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
-    "ses_2f7d04cdbffeLoPMrRowIL0io9"
+    "ses_2f4d670e0ffeK6nNtsUMcWeAJf",
+    "ses_2ee8f5dafffeIBdieplw9MDmWK",
+    "ses_2ee8b6ae0ffelbZ1yVvlUkoV2d",
+    "ses_2ee8b57c9ffeo2AqeY2mFflyL4",
+    "ses_2ee891972ffeovn3ij6akQcred",
+    "ses_2ee87444dffeE8zMCrDESD9QkB",
+    "ses_2ee879b70ffeetz0YBKcvUKHK7",
+    "ses_2ee87c8f6ffesl3VowA4mvIt4J",
+    "ses_2ee87711effeoy1a14jiaGP3lo",
+    "ses_2ee68c6b7ffeou2a4OQer7OUv6",
+    "ses_2ee641bafffedwr1vBsjyxnyAm",
+    "ses_2ee5d1b3cffeRmERrAB4gXzpL4"
   ],
-  "plan_name": "fix-f3-verification-issues",
+  "plan_name": "zen-model-prefix-fix",
   "agent": "atlas"
 }

@@ -1,4 +1,4 @@
-import { PROVIDER_CONFIGS, type Provider } from './detector.js';
+import { PROVIDER_CONFIGS, applyModelPrefix, type Provider } from './detector.js';
 import { getRotator } from './rotator.js';
 import { getFreeModels, getModel, getAllModels } from './db.js';
 import { forwardAuto, type PriorityType } from './auto.js';
@@ -14,15 +14,15 @@ export interface RunOptions {
 }
 
 const DEFAULT_MODELS: Record<Provider, string> = {
-  zen: 'big-pickle',
-  openai: 'gpt-4o-mini',
-  anthropic: 'claude-haiku-4-5-20251001',
-  groq: 'llama-3.1-8b-instant',
-  google: 'gemini-1.5-flash',
-  ollama: 'llama3',
-  'ollama-local': 'qwen3:8b',
-  openrouter: 'nvidia/nemotron-3-super-120b-a12b:free',
-};
+   opencode: 'big-pickle',
+   openai: 'gpt-4o-mini',
+   anthropic: 'claude-haiku-4-5-20251001',
+   groq: 'llama-3.1-8b-instant',
+   google: 'gemini-1.5-flash',
+   ollama: 'llama3',
+   'ollama-local': 'qwen3:8b',
+   openrouter: 'nvidia/nemotron-3-super-120b-a12b:free',
+ };
 
 async function handleStream(res: Response, provider: Provider, model: string): Promise<void> {
   const reader = res.body?.getReader();
@@ -62,7 +62,8 @@ async function makeRequest(
 ): Promise<{ res: Response; key: string }> {
   const config = PROVIDER_CONFIGS[provider];
   const url = `${config.baseUrl}/chat/completions`;
-  const body = JSON.stringify({ model, stream, messages: [{ role: 'user', content: prompt }] });
+  const prefixedModel = applyModelPrefix(provider, model);
+  const body = JSON.stringify({ model: prefixedModel, stream, messages: [{ role: 'user', content: prompt }] });
   const baseHeaders = { 'content-type': 'application/json' };
 
   return tryWithKeyRotation(provider, model, url, 'POST', baseHeaders, body);

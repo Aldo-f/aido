@@ -2,6 +2,7 @@ import { type Provider } from './detector.js';
 import { getRotator } from './rotator.js';
 import { logRequest } from './db.js';
 import { PROVIDER_CONFIGS } from './detector.js';
+import { safeFetch } from './safe-fetch.js';
 
 const FATAL_STATUSES = new Set([400, 404]);
 
@@ -26,7 +27,7 @@ export async function tryKey(
   const headers = { ...baseHeaders, ...config.authHeader(key) };
 
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method,
       headers,
       body: method !== 'GET' && method !== 'HEAD' ? body : undefined,

@@ -68,13 +68,13 @@ describe('routeAidoModel', () => {
     });
   });
 
-  describe('provider category', () => {
-    it('routes aido/zen/big-pickle to zen', () => {
-      const result = routeAidoModel('aido/zen/big-pickle');
-      expect(result.provider).toBe('zen');
-      expect(result.model).toBe('big-pickle');
-      expect(result.isAuto).toBe(false);
-    });
+   describe('provider category', () => {
+     it('routes aido/opencode/big-pickle to opencode', () => {
+       const result = routeAidoModel('aido/opencode/big-pickle');
+       expect(result.provider).toBe('opencode');
+       expect(result.model).toBe('big-pickle');
+       expect(result.isAuto).toBe(false);
+     });
 
     it('routes aido/ollama/glm-5:cloud to ollama', () => {
       const result = routeAidoModel('aido/ollama/glm-5:cloud');
@@ -83,11 +83,11 @@ describe('routeAidoModel', () => {
       expect(result.isAuto).toBe(false);
     });
 
-    it('auto-adds :cloud suffix for known cloud models', () => {
-      const result = routeAidoModel('aido/zen/glm-5');
-      expect(result.provider).toBe('zen');
-      expect(result.model).toBe('glm-5:cloud');
-    });
+     it('auto-adds :cloud suffix for known cloud models', () => {
+       const result = routeAidoModel('aido/opencode/glm-5');
+       expect(result.provider).toBe('opencode');
+       expect(result.model).toBe('glm-5:cloud');
+     });
 
     it('routes aido/openai/gpt-4o-mini to openai', () => {
       const result = routeAidoModel('aido/openai/gpt-4o-mini');
@@ -123,16 +123,16 @@ describe('routeAidoModel', () => {
 });
 
 describe('getPriorityForCategory', () => {
-  it('returns AUTO_PRIORITY for auto', () => {
-    const priority = getPriorityForCategory('auto');
-    expect(priority[0].provider).toBe('zen');
-    expect(priority[0].model).toBe('big-pickle');
-  });
+   it('returns AUTO_PRIORITY for auto', () => {
+     const priority = getPriorityForCategory('auto');
+     expect(priority[0].provider).toBe('opencode');
+     expect(priority[0].model).toBe('big-pickle');
+   });
 
-  it('returns CLOUD_PRIORITY for cloud', () => {
-    const priority = getPriorityForCategory('cloud');
-    expect(priority[0].provider).toBe('zen');
-  });
+   it('returns CLOUD_PRIORITY for cloud', () => {
+     const priority = getPriorityForCategory('cloud');
+     expect(priority[0].provider).toBe('opencode');
+   });
 
   it('CLOUD_PRIORITY includes ollama-local with :cloud models', () => {
     const priority = getPriorityForCategory('cloud');
@@ -147,10 +147,10 @@ describe('getPriorityForCategory', () => {
     expect(priority[0].model).toBe('qwen3:8b');
   });
 
-  it('returns AUTO_PRIORITY for provider', () => {
-    const priority = getPriorityForCategory('provider');
-    expect(priority[0].provider).toBe('zen');
-  });
+   it('returns AUTO_PRIORITY for provider', () => {
+     const priority = getPriorityForCategory('provider');
+     expect(priority[0].provider).toBe('opencode');
+   });
 });
 
 describe('cloud model detection', () => {

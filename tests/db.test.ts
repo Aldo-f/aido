@@ -17,21 +17,21 @@ describe('db', () => {
     });
 
     it('returns true for a recently limited key', () => {
-      markRateLimited('sk-test', 'zen', 3600);
+      markRateLimited('sk-test', 'opencode', 3600);
       expect(isRateLimited('sk-test')).toBe(true);
     });
 
     it('returns false for an expired limit', () => {
-      markRateLimited('sk-test', 'zen', -1); // expired 1 second ago
+      markRateLimited('sk-test', 'opencode', -1); // expired 1 second ago
       expect(isRateLimited('sk-test')).toBe(false);
     });
   });
 
   describe('markRateLimited', () => {
     it('increments hit_count on repeated marks', () => {
-      markRateLimited('sk-test', 'zen', 3600);
-      markRateLimited('sk-test', 'zen', 3600);
-      markRateLimited('sk-test', 'zen', 3600);
+      markRateLimited('sk-test', 'opencode', 3600);
+      markRateLimited('sk-test', 'opencode', 3600);
+      markRateLimited('sk-test', 'opencode', 3600);
 
       const db = getDb();
       const row = db
@@ -43,8 +43,8 @@ describe('db', () => {
 
   describe('clearExpiredLimits', () => {
     it('removes expired entries and returns count', () => {
-      markRateLimited('sk-expired', 'zen', -1);
-      markRateLimited('sk-active', 'zen', 3600);
+      markRateLimited('sk-expired', 'opencode', -1);
+      markRateLimited('sk-active', 'opencode', 3600);
 
       const removed = clearExpiredLimits();
       expect(removed).toBe(1);
@@ -55,8 +55,8 @@ describe('db', () => {
 
   describe('logRequest', () => {
     it('writes to request_log', () => {
-      logRequest('sk-test', 'zen', 200);
-      logRequest('sk-test', 'zen', 429);
+      logRequest('sk-test', 'opencode', 200);
+      logRequest('sk-test', 'opencode', 429);
 
       const db = getDb();
       const rows = db
@@ -70,7 +70,7 @@ describe('db', () => {
 
   describe('getRateLimitedKeys', () => {
     it('returns only active limits', () => {
-      markRateLimited('sk-a', 'zen', 3600);
+      markRateLimited('sk-a', 'opencode', 3600);
       markRateLimited('sk-b', 'openai', -1); // expired
 
       const limited = getRateLimitedKeys();

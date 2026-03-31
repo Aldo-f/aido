@@ -28,9 +28,9 @@ describe('parseAidoModel', () => {
       expect(result).toEqual({ category: 'local', provider: null, model: 'qwen3:8b' });
     });
 
-    it('parses aido/zen/big-pickle', () => {
-      const result = parseAidoModel('aido/zen/big-pickle');
-      expect(result).toEqual({ category: 'provider', provider: 'zen', model: 'big-pickle' });
+    it('parses aido/opencode/big-pickle', () => {
+      const result = parseAidoModel('aido/opencode/big-pickle');
+      expect(result).toEqual({ category: 'provider', provider: 'opencode', model: 'big-pickle' });
     });
 
     it('parses aido/ollama/glm-5:cloud', () => {
@@ -119,8 +119,8 @@ describe('parseAidoModel', () => {
       expect(result.model).toBe('big-pickle');
     });
 
-    it('throws for aido/zen (missing model)', () => {
-      expect(() => parseAidoModel('aido/zen')).toThrow("Missing model name");
+    it('throws for aido/opencode (missing model)', () => {
+      expect(() => parseAidoModel('aido/opencode')).toThrow("Missing model name");
     });
 
     it('throws for non-aido path', () => {

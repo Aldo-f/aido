@@ -36,39 +36,39 @@ describe('readEnvFile', () => {
 
 describe('addKeyToEnv', () => {
   it('creates .env with first key', () => {
-    const result = addKeyToEnv('zen', 'sk-key1', TMP);
+    const result = addKeyToEnv('opencode', 'sk-key1', TMP);
     expect(result.added).toBe(true);
     expect(result.total).toBe(1);
 
     const map = readEnvFile(TMP);
-    expect(map.get('ZEN_KEYS')).toBe('sk-key1');
+    expect(map.get('OPENCODE_KEYS')).toBe('sk-key1');
   });
 
   it('appends a second key', () => {
-    addKeyToEnv('zen', 'sk-key1', TMP);
-    const result = addKeyToEnv('zen', 'sk-key2', TMP);
+    addKeyToEnv('opencode', 'sk-key1', TMP);
+    const result = addKeyToEnv('opencode', 'sk-key2', TMP);
 
     expect(result.added).toBe(true);
     expect(result.total).toBe(2);
 
     const map = readEnvFile(TMP);
-    expect(map.get('ZEN_KEYS')).toBe('sk-key1,sk-key2');
+    expect(map.get('OPENCODE_KEYS')).toBe('sk-key1,sk-key2');
   });
 
   it('does not duplicate an existing key', () => {
-    addKeyToEnv('zen', 'sk-key1', TMP);
-    const result = addKeyToEnv('zen', 'sk-key1', TMP);
+    addKeyToEnv('opencode', 'sk-key1', TMP);
+    const result = addKeyToEnv('opencode', 'sk-key1', TMP);
 
     expect(result.added).toBe(false);
     expect(result.total).toBe(1);
   });
 
   it('handles multiple providers independently', () => {
-    addKeyToEnv('zen', 'sk-zen-key1', TMP);
+    addKeyToEnv('opencode', 'sk-zen-key1', TMP);
     addKeyToEnv('openai', 'sk-proj-key1', TMP);
 
     const map = readEnvFile(TMP);
-    expect(map.get('ZEN_KEYS')).toBe('sk-zen-key1');
+    expect(map.get('OPENCODE_KEYS')).toBe('sk-zen-key1');
     expect(map.get('OPENAI_KEYS')).toBe('sk-proj-key1');
   });
 });

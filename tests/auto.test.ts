@@ -13,9 +13,10 @@ beforeEach(() => {
 });
 
 // Helper: mock fetch to return a specific status for a URL pattern
+// Handles both string URLs and Request objects (safeFetch wraps URLs in Request)
 function mockFetch(responses: Array<{ match: string; status: number; body: object }>) {
-  return vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
-    const urlStr = String(url);
+  return vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    const urlStr = input instanceof Request ? input.url : String(input);
     for (const r of responses) {
       if (urlStr.includes(r.match)) {
         return Promise.resolve(
@@ -40,8 +41,8 @@ const SUCCESS_BODY = {
 };
 
 describe('AUTO_PRIORITY', () => {
-  it('starts with zen as first priority', () => {
-    expect(AUTO_PRIORITY[0].provider).toBe('zen');
+  it('starts with opencode as first priority', () => {
+    expect(AUTO_PRIORITY[0].provider).toBe('opencode');
   });
 
   it('includes ollama-local before cloud providers', () => {
@@ -53,7 +54,7 @@ describe('AUTO_PRIORITY', () => {
 
 describe('forwardAuto', () => {
   it('uses the first provider that succeeds', async () => {
-    process.env.ZEN_KEYS = 'sk-' + 'z'.repeat(60);
+    process.env.OPENCODE_KEYS = 'sk-' + 'z'.repeat(60);
 
     const fetchSpy = mockFetch([
       { match: 'opencode.ai', status: 200, body: SUCCESS_BODY },
@@ -61,23 +62,24 @@ describe('forwardAuto', () => {
 
     const result = await forwardAuto('/v1/chat/completions', 'POST', DUMMY_BODY);
     expect(result.status).toBe(200);
-    expect(result.usedProvider).toBe('zen');
+    expect(result.usedProvider).toBe('opencode');
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('skips providers with no keys configured', async () => {
-    delete process.env.ZEN_KEYS;
+    delete process.env.OPENCODE_KEYS;
     delete process.env.OLLAMA_KEYS;
     process.env.GROQ_KEYS = 'gsk_testkey';
 
     // ollama-local always has a 'local' placeholder key but will fail with network error
     // groq should be tried after ollama-local fails
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
-      if (String(url).includes('localhost:11434')) return Promise.reject(new Error('ECONNREFUSED'));
-      if (String(url).includes('groq.com')) {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const urlStr = input instanceof Request ? input.url : String(input);
+      if (urlStr.includes('localhost:11434')) return Promise.reject(new Error('ECONNREFUSED'));
+      if (urlStr.includes('groq.com')) {
         return Promise.resolve(new Response(JSON.stringify(SUCCESS_BODY), { status: 200 }));
       }
-      return Promise.reject(new Error(`unexpected: ${url}`));
+      return Promise.reject(new Error(`unexpected: ${input}`));
     });
 
     const result = await forwardAuto('/v1/chat/completions', 'POST', DUMMY_BODY);
@@ -86,16 +88,17 @@ describe('forwardAuto', () => {
   });
 
   it('falls through on 429 and tries next provider', async () => {
-    process.env.ZEN_KEYS = 'sk-' + 'z'.repeat(60);
+    process.env.OPENCODE_KEYS = 'sk-' + 'z'.repeat(60);
     process.env.GROQ_KEYS = 'gsk_testkey';
     delete process.env.OLLAMA_KEYS;
 
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
-      if (String(url).includes('opencode.ai')) {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const urlStr = input instanceof Request ? input.url : String(input);
+      if (urlStr.includes('opencode.ai')) {
         return Promise.resolve(new Response('{}', { status: 429 }));
       }
-      if (String(url).includes('localhost:11434')) return Promise.reject(new Error('ECONNREFUSED'));
-      if (String(url).includes('groq.com')) {
+      if (urlStr.includes('localhost:11434')) return Promise.reject(new Error('ECONNREFUSED'));
+      if (urlStr.includes('groq.com')) {
         return Promise.resolve(new Response(JSON.stringify(SUCCESS_BODY), { status: 200 }));
       }
       return Promise.reject(new Error('unexpected'));
@@ -103,20 +106,21 @@ describe('forwardAuto', () => {
 
     const result = await forwardAuto('/v1/chat/completions', 'POST', DUMMY_BODY);
     expect(result.usedProvider).toBe('groq');
-    // zen (429) + ollama-local (network fail) + groq (success)
+    // opencode (429) + ollama-local (network fail) + groq (success)
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
   it('returns 503 when all providers exhausted', async () => {
-    delete process.env.ZEN_KEYS;
+    delete process.env.OPENCODE_KEYS;
     delete process.env.OLLAMA_KEYS;
     delete process.env.GROQ_KEYS;
     delete process.env.OPENAI_KEYS;
     delete process.env.ANTHROPIC_KEYS;
     delete process.env.GOOGLE_KEYS;
 
-    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
-      if (String(url).includes('localhost:11434')) {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const urlStr = input instanceof Request ? input.url : String(input);
+      if (urlStr.includes('localhost:11434')) {
         return Promise.reject(new Error('ECONNREFUSED'));
       }
       return Promise.reject(new Error('No mock for URL'));
@@ -130,13 +134,14 @@ describe('forwardAuto', () => {
   });
 
   it('skips providers that throw network errors', async () => {
-    process.env.ZEN_KEYS = 'sk-' + 'z'.repeat(60);
+    process.env.OPENCODE_KEYS = 'sk-' + 'z'.repeat(60);
     process.env.GROQ_KEYS = 'gsk_testkey';
     delete process.env.OLLAMA_KEYS;
 
-    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
-      if (String(url).includes('opencode.ai')) return Promise.reject(new Error('EAI_AGAIN'));
-      if (String(url).includes('localhost:11434')) return Promise.reject(new Error('ECONNREFUSED'));
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const urlStr = input instanceof Request ? input.url : String(input);
+      if (urlStr.includes('opencode.ai')) return Promise.reject(new Error('EAI_AGAIN'));
+      if (urlStr.includes('localhost:11434')) return Promise.reject(new Error('ECONNREFUSED'));
       // groq succeeds
       return Promise.resolve(new Response(JSON.stringify(SUCCESS_BODY), { status: 200 }));
     });

@@ -113,7 +113,7 @@ async function launchOpenCode(port: number): Promise<void> {
 
   // Fetch API models and merge with capabilities
   const apiModels: Array<ModelInfo & { _provider?: string }> = [];
-  for (const provider of ['zen', 'groq', 'openai'] as const) {
+  for (const provider of ['opencode', 'groq', 'openai'] as const) {
     const keys = loadKeysForProvider(provider);
     if (keys.length > 0) {
       try {
@@ -130,7 +130,7 @@ async function launchOpenCode(port: number): Promise<void> {
   // Add models from API with capabilities
   for (const model of apiModels) {
     const caps = model.capabilities ?? mergeWithCapabilities(model.id);
-    const provider = model._provider ?? 'zen';
+    const provider = model._provider ?? 'opencode';
     
     const modelKey = provider === 'ollama' 
       ? `aido/ollama/${model.id}`

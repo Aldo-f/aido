@@ -3,21 +3,21 @@ import { identifyFreeModels } from '../src/free-discovery.js';
 import type { RawModel } from '../src/free-discovery.js';
 
 describe('identifyFreeModels', () => {
-  describe('Zen provider', () => {
+  describe('opencode provider', () => {
     it('identifies models ending with -free as free', () => {
       const models: RawModel[] = [
         { id: 'mimo-v2-flash-free' },
         { id: 'nemotron-3-super-free' },
         { id: 'minimax-m2.5-free' },
       ];
-      const result = identifyFreeModels('zen', models);
+      const result = identifyFreeModels('opencode', models);
       expect(result.every(m => m.isFree)).toBe(true);
     });
 
     it('identifies big-pickle as free', () => {
       // big-pickle is a special case - doesn't end with -free but is documented as free
       const models: RawModel[] = [{ id: 'big-pickle' }];
-      const result = identifyFreeModels('zen', models);
+      const result = identifyFreeModels('opencode', models);
       expect(result[0].isFree).toBe(true);
     });
 
@@ -26,7 +26,7 @@ describe('identifyFreeModels', () => {
         { id: 'some-paid-model' },
         { id: 'gpt-4' },
       ];
-      const result = identifyFreeModels('zen', models);
+      const result = identifyFreeModels('opencode', models);
       expect(result.every(m => !m.isFree)).toBe(true);
     });
 
@@ -34,10 +34,10 @@ describe('identifyFreeModels', () => {
       const models: RawModel[] = [
         { id: 'test-free', name: 'Test Model' },
       ];
-      const result = identifyFreeModels('zen', models);
+      const result = identifyFreeModels('opencode', models);
       expect(result[0].id).toBe('test-free');
       expect(result[0].name).toBe('Test Model');
-      expect(result[0].provider).toBe('zen');
+      expect(result[0].provider).toBe('opencode');
       expect(result[0].discoveredAt).toBeDefined();
       expect(result[0].expiresAt).toBeGreaterThan(result[0].discoveredAt);
     });

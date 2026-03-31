@@ -18,10 +18,10 @@ describe('detectProvider', () => {
     expect(detectProvider('AIzaSyAbc123')).toBe('google');
   });
 
-  it('detects Zen keys (sk- prefix, 60+ chars)', () => {
-    const zenKey = 'sk-LXREfPN2uSYZ74VW4HLpKpHbnhaW6JC6v87XFurX1FJnbcHed3EYlJUmNO5gooTF';
-    expect(detectProvider(zenKey)).toBe('zen');
-    expect(zenKey.length).toBeGreaterThanOrEqual(60);
+  it('detects OpenCode keys (sk- prefix, 60+ chars)', () => {
+    const opencodeKey = 'sk-LXREfPN2uSYZ74VW4HLpKpHbnhaW6JC6v87XFurX1FJnbcHed3EYlJUmNO5gooTF';
+    expect(detectProvider(opencodeKey)).toBe('opencode');
+    expect(opencodeKey.length).toBeGreaterThanOrEqual(60);
   });
 
   it('detects short sk- keys as OpenAI (legacy)', () => {
@@ -45,12 +45,12 @@ describe('detectProvider', () => {
     expect(detectProvider('Bearer xyz')).toBeNull();
   });
 
-  it('Zen key is not mistaken for OpenAI', () => {
-    const zenKey = 'sk-' + 'Z'.repeat(65);
-    expect(detectProvider(zenKey)).toBe('zen');
+  it('OpenCode key is not mistaken for OpenAI', () => {
+    const opencodeKey = 'sk-' + 'Z'.repeat(65);
+    expect(detectProvider(opencodeKey)).toBe('opencode');
   });
 
-  it('OpenAI key (short) is not mistaken for Zen', () => {
+  it('OpenAI key (short) is not mistaken for OpenCode', () => {
     const openaiKey = 'sk-' + 'A'.repeat(30);
     expect(detectProvider(openaiKey)).toBe('openai');
   });
