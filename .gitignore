@@ -1,6 +1,7 @@
 node_modules/
 dist/
 logs/
+nohup.out
 
 # Local data — never commit
 .env

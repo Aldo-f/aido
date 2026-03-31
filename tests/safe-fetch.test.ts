@@ -72,4 +72,228 @@ describe('safeFetch', () => {
     });
     expect((callArgs[1] as RequestInit).body).toBe('test body');
   });
+
+  it('retries on ETIMEDOUT network errors', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(Object.assign(new Error('fetch failed'), {
+        cause: { code: 'ETIMEDOUT' }
+      }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries on ECONNREFUSED network errors', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(Object.assign(new Error('fetch failed'), {
+        cause: { code: 'ECONNREFUSED' }
+      }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries on ENETUNREACH network errors', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(Object.assign(new Error('fetch failed'), {
+        cause: { code: 'ENETUNREACH' }
+      }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries on generic fetch failed errors', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up after max retries', async () => {
+    const networkError = Object.assign(new Error('fetch failed'), {
+      cause: { code: 'ETIMEDOUT' }
+    });
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValue(networkError)
+      .mockRejectedValue(networkError)
+      .mockRejectedValue(networkError)
+      .mockRejectedValue(networkError);
+
+    await expect(safeFetch('https://example.com/api', { method: 'GET' }))
+      .rejects.toThrow('fetch failed');
+
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not retry on non-network errors', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new TypeError('Invalid URL'));
+
+    await expect(safeFetch('https://example.com/api', { method: 'GET' }))
+      .rejects.toThrow('Invalid URL');
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry on HTTP error responses (4xx, 5xx)', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Not Found', { status: 404 }));
+
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(res.status).toBe(404);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles URL object as input', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    const url = new URL('https://example.com/api');
+    await safeFetch(url, { method: 'GET' });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect((mockFetch.mock.calls[0][1] as Record<string, unknown>).timeout).toBe(false);
+  });
+
+  it('handles GET requests without body', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    await safeFetch('https://example.com/api', { method: 'GET' });
+
+    const callArgs = mockFetch.mock.calls[0];
+    expect((callArgs[1] as RequestInit).method).toBe('GET');
+    expect((callArgs[1] as RequestInit).body).toBeUndefined();
+  });
+
+  it('handles POST requests with JSON body', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    const body = JSON.stringify({ model: 'test', messages: [] });
+    await safeFetch('https://example.com/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+    const callArgs = mockFetch.mock.calls[0];
+    expect((callArgs[1] as RequestInit).body).toBe(body);
+  });
+
+  it('handles POST requests with text body', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    await safeFetch('https://example.com/api', {
+      method: 'POST',
+      body: 'plain text body',
+    });
+
+    const callArgs = mockFetch.mock.calls[0];
+    expect((callArgs[1] as RequestInit).body).toBe('plain text body');
+  });
+
+  it('returns successful response on first try', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: 'success' }), { status: 200 })
+    );
+
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const json = await res.json() as { data: string };
+    expect(json.data).toBe('success');
+  });
+
+  it('handles streaming responses', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('data: chunk1\n\ndata: chunk2\n\n', { status: 200 })
+    );
+
+    const res = await safeFetch('https://example.com/stream', { method: 'GET' });
+
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toBe('data: chunk1\n\ndata: chunk2\n\n');
+  });
+
+  it('handles HEAD requests without body', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 200, headers: { 'Content-Length': '1234' } })
+    );
+
+    const res = await safeFetch('https://example.com/api', { method: 'HEAD' });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Length')).toBe('1234');
+  });
+
+  it('handles empty init object', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    await safeFetch('https://example.com/api', {});
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect((mockFetch.mock.calls[0][1] as Record<string, unknown>).timeout).toBe(false);
+  });
+
+  it('handles undefined init', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    await safeFetch('https://example.com/api', undefined);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect((mockFetch.mock.calls[0][1] as Record<string, unknown>).timeout).toBe(false);
+  });
+
+  it('handles no init argument', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    await safeFetch('https://example.com/api');
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect((mockFetch.mock.calls[0][1] as Record<string, unknown>).timeout).toBe(false);
+  });
+
+  it('retries with exponential backoff timing', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(Object.assign(new Error('fetch failed'), {
+        cause: { code: 'ETIMEDOUT' }
+      }))
+      .mockRejectedValueOnce(Object.assign(new Error('fetch failed'), {
+        cause: { code: 'ETIMEDOUT' }
+      }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const start = Date.now();
+    await safeFetch('https://example.com/api', { method: 'GET' });
+    const elapsed = Date.now() - start;
+
+    // Should have waited ~100ms (first retry) + ~200ms (second retry) = ~300ms minimum
+    expect(elapsed).toBeGreaterThanOrEqual(250);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
 });
