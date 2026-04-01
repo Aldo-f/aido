@@ -12,6 +12,7 @@ import { loadKeysForProvider } from './rotator.js';
 import { readPid, deletePid, isStale } from './daemon.js';
 import { huntKeys, validateKey, startHuntDaemon, isHuntRunning, readHuntPid, deleteHuntPid } from './hunt.js';
 import { forwardAutoFree } from './auto.js';
+import { ALL_PROVIDERS } from './http-utils.js';
 
 // Gracefully handle broken pipes (e.g., piping to head, grep, etc.)
 process.stdout.on('error', (err) => {
@@ -81,8 +82,8 @@ program
   .option('--sync', 'Force refresh, ignore cache', false)
   .action(async (providerArg: string | undefined, opts: { sync: boolean }) => {
 const providers: Provider[] = providerArg
-       ? [providerArg as Provider]
-       : ['opencode', 'openai', 'google', 'groq', 'ollama', 'ollama-local', 'openrouter'];
+        ? [providerArg as Provider]
+        : [...ALL_PROVIDERS] as Provider[];
 
     for (const provider of providers) {
       const keys = loadKeysForProvider(provider);
@@ -123,7 +124,7 @@ program
     clearExpiredLimits();
 
     // Show configured providers
-    const providers: Provider[] = ['opencode', 'openai', 'anthropic', 'groq', 'google', 'ollama', 'ollama-local', 'openrouter'];
+    const providers: Provider[] = [...ALL_PROVIDERS] as Provider[];
     console.log('Configured providers:\n');
     for (const p of providers) {
       const keys = loadKeysForProvider(p);
@@ -164,7 +165,7 @@ program
     const clearedModels = clearAllModelLimits();
     console.log(`[sync] Cleared ${clearedKeys} key limit${clearedKeys !== 1 ? 's' : ''} and ${clearedModels} model limit${clearedModels !== 1 ? 's' : ''}.`);
 
-    const providers: Provider[] = ['opencode', 'openai', 'google', 'groq', 'ollama', 'ollama-local', 'openrouter'];
+    const providers: Provider[] = [...ALL_PROVIDERS] as Provider[];
     console.log('[sync] Refreshing models from all providers...\n');
 
     for (const provider of providers) {

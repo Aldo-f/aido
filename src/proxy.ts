@@ -9,45 +9,38 @@ import { isPortInUse } from './port-check.js';
 import { writePid, readPid, deletePid, isStale } from './daemon.js';
 import { mergeWithCapabilities } from './model-capabilities.js';
 import { safeFetch } from './safe-fetch.js';
+import { extractResponseHeaders } from './http-utils.js';
+import { type PriorityType } from './auto.js';
 
 const DEFAULT_PROVIDER: Provider =
   (process.env.DEFAULT_PROVIDER as Provider) ?? 'opencode';
 
 const PORT = parseInt(process.env.PROXY_PORT ?? '4141', 10);
 
+function createEnrichedModel(m: Record<string, unknown>, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const caps = mergeWithCapabilities(m.id as string);
+  return {
+    ...m,
+    owned_by: 'aido',
+    context: caps.context,
+    input: caps.input,
+    output: caps.output,
+    allows: caps.allows,
+    capabilities: caps,
+    ...overrides,
+  };
+}
+
 function enrichModelsWithCapabilities(responseBody: string): string {
   try {
-    const json = JSON.parse(responseBody);
+    const json = JSON.parse(responseBody) as { data?: unknown[] };
     const models = json.data ?? [];
     if (Array.isArray(models) && models.length > 0) {
-      const enrichedModels: typeof models = [];
-      
+      const enrichedModels: Record<string, unknown>[] = [];
       for (const m of models) {
-        const caps = mergeWithCapabilities(m.id);
-        
-        enrichedModels.push({
-          ...m,
-          owned_by: 'aido',
-          context: caps.context,
-          input: caps.input,
-          output: caps.output,
-          allows: caps.allows,
-          capabilities: caps,
-        });
-        
-        const prefixedId = `aido/zen/${m.id}`;
-        enrichedModels.push({
-          ...m,
-          id: prefixedId,
-          owned_by: 'aido',
-          context: caps.context,
-          input: caps.input,
-          output: caps.output,
-          allows: caps.allows,
-          capabilities: caps,
-        });
+        enrichedModels.push(createEnrichedModel(m as Record<string, unknown>));
+        enrichedModels.push(createEnrichedModel(m as Record<string, unknown>, { id: `aido/zen/${(m as Record<string, unknown>).id}` }));
       }
-      
       json.data = enrichedModels;
       return JSON.stringify(json);
     }
@@ -57,11 +50,7 @@ function enrichModelsWithCapabilities(responseBody: string): string {
   }
 }
 
-import { type PriorityType } from './auto.js';
-
 export function resolveProvider(pathname: string, body?: string): { provider: Provider | 'auto'; upstreamPath: string; isAidoAuto?: boolean; model?: string; priorityType?: PriorityType } {
-  // New format: route based on model name in request body
-  // Path should be /v1/... or /aido/v1/...
   if (body) {
     try {
       const parsed = JSON.parse(body);
@@ -80,7 +69,6 @@ export function resolveProvider(pathname: string, body?: string): { provider: Pr
     }
   }
 
-  // Default: use zen provider
   return { provider: DEFAULT_PROVIDER, upstreamPath: pathname };
 }
 
@@ -92,7 +80,7 @@ async function forwardRequest(
   body: string,
 ): Promise<{ status: number; body: string; headers: Record<string, string> }> {
   const rotator = getRotator(provider);
-  const key = rotator.next();
+  let key = rotator.next();
 
   if (!key) {
     return {
@@ -109,15 +97,14 @@ async function forwardRequest(
   if (config.baseUrl.endsWith('/v1') && upstreamPath.startsWith('/v1')) {
     upstreamPath = upstreamPath.slice(3);
   }
-  
+
   // Parse body to potentially update model name for upstream request
   let upstreamBody = body;
   let modelForLogging = '';
   try {
     const parsed = JSON.parse(body);
     modelForLogging = parsed.model ?? '';
-    
-    // If we have a model in the body, resolve it and send the resolved model upstream
+
     if (parsed.model && typeof parsed.model === 'string') {
       const resolved = resolveProvider(path, body);
       if (resolved.model && resolved.provider !== 'auto') {
@@ -136,56 +123,65 @@ async function forwardRequest(
   };
 
   const startTime = Date.now();
-  let model = modelForLogging; // Use the parsed model for logging
+  let model = modelForLogging;
 
-  try {
-    const res = await safeFetch(url, {
-      method,
-      headers: forwardHeaders,
-      body: method !== 'GET' && method !== 'HEAD' ? upstreamBodyForOllama : undefined,
-    });
+  // Loop instead of recursion for 429 handling
+  while (true) {
+    try {
+      const res = await safeFetch(url, {
+        method,
+        headers: forwardHeaders,
+        body: method !== 'GET' && method !== 'HEAD' ? upstreamBodyForOllama : undefined,
+      });
 
-    const rawBody = await res.text();
-    const responseBody = isOllama ? fromOllamaResponse(rawBody) : rawBody;
-    const latencyMs = Date.now() - startTime;
-    logRequest(key, provider, res.status, model, 'proxy', latencyMs);
+      const rawBody = await res.text();
+      const responseBody = isOllama ? fromOllamaResponse(rawBody) : rawBody;
+      const latencyMs = Date.now() - startTime;
+      logRequest(key, provider, res.status, model, 'proxy', latencyMs);
 
-    if (res.status === 404 && provider === 'ollama-local') {
-      let model = '(unknown)';
-      try { model = (JSON.parse(upstreamBody) as { model?: string }).model ?? model; } catch { /* ok */ }
+      if (res.status === 404 && provider === 'ollama-local') {
+        let modelName = '(unknown)';
+        try { modelName = (JSON.parse(upstreamBody) as { model?: string }).model ?? modelName; } catch { /* ok */ }
+        return {
+          status: 404,
+          body: JSON.stringify({
+            error: `Model "${modelName}" not found in local Ollama. Run: ollama pull ${modelName}`,
+          }),
+          headers: { 'content-type': 'application/json' },
+        };
+      }
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('retry-after');
+        const cooldown = retryAfter ? parseInt(retryAfter, 10) : 3600;
+        rotator.markLimited(key, cooldown);
+        console.log(`[proxy] 429 on ${provider} key ...${key.slice(-8)} → rotating to next key`);
+
+        key = rotator.next();
+        if (!key) {
+          return {
+            status: 503,
+            body: JSON.stringify({ error: 'All API keys are rate limited. Try again later.' }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        forwardHeaders['Authorization'] = config.authHeader(key).Authorization ?? forwardHeaders['Authorization'];
+        continue;
+      }
+
+      const responseHeaders = extractResponseHeaders(res);
+      const enrichedBody = path.includes('/v1/models')
+        ? enrichModelsWithCapabilities(responseBody)
+        : responseBody;
+
+      return { status: res.status, body: enrichedBody, headers: responseHeaders };
+    } catch (err) {
       return {
-        status: 404,
-        body: JSON.stringify({
-          error: `Model "${model}" not found in local Ollama. Run: ollama pull ${model}`,
-        }),
+        status: 502,
+        body: JSON.stringify({ error: `Upstream error: ${(err as Error).message}` }),
         headers: { 'content-type': 'application/json' },
       };
     }
-
-    if (res.status === 429) {
-      const retryAfter = res.headers.get('retry-after');
-      const cooldown = retryAfter ? parseInt(retryAfter, 10) : 3600;
-      rotator.markLimited(key, cooldown);
-      console.log(`[proxy] 429 on ${provider} key ...${key.slice(-8)} → rotating to next key`);
-      return forwardRequest(provider, path, method, headers, body);
-    }
-
-    const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
-    res.headers.forEach((value, name) => {
-      if (name !== 'content-type') responseHeaders[name] = value;
-    });
-
-    const enrichedBody = path.includes('/v1/models') 
-      ? enrichModelsWithCapabilities(responseBody) 
-      : responseBody;
-
-    return { status: res.status, body: enrichedBody, headers: responseHeaders };
-  } catch (err) {
-    return {
-      status: 502,
-      body: JSON.stringify({ error: `Upstream error: ${(err as Error).message}` }),
-      headers: { 'content-type': 'application/json' },
-    };
   }
 }
 
@@ -194,7 +190,6 @@ export function createProxyServer(): http.Server {
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
     const pathname = url.pathname;
 
-    // Health check endpoint
     if (pathname === '/health' && req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', version: '1.0.0' }));
@@ -224,23 +219,21 @@ export async function startProxy(): Promise<void> {
       console.error(`           Is another aido-proxy instance running?`);
       console.error(`           To stop it: kill ${existing.pid}`);
       process.exit(1);
-      return;
     }
     console.log(`[aido-proxy] Stale PID file found, removing...`);
     deletePid();
-    
+
     if (await isPortInUse(PORT)) {
       console.error(`[aido-proxy] Error: Port ${PORT} is in use by another process.`);
       console.error(`           Please stop the existing service or use a different port.`);
       console.error(`           Current port: ${PORT}`);
       console.error(`           To change: set PROXY_PORT=4142 in .env`);
       process.exit(1);
-      return;
     }
   }
 
   const server = createProxyServer();
-  
+
   const cleanup = () => {
     console.log('[aido-proxy] Shutting down...');
     deletePid();
@@ -248,10 +241,10 @@ export async function startProxy(): Promise<void> {
       process.exit(0);
     });
   };
-  
+
   process.on('SIGTERM', cleanup);
   process.on('SIGINT', cleanup);
-  
+
   server.listen(PORT, () => {
     writePid(PORT);
     console.log(`[aido-proxy] Listening on http://localhost:${PORT}`);

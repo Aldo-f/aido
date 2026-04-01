@@ -3,8 +3,7 @@ import { getRotator } from './rotator.js';
 import { logRequest } from './db.js';
 import { PROVIDER_CONFIGS } from './detector.js';
 import { safeFetch } from './safe-fetch.js';
-
-const FATAL_STATUSES = new Set([400, 404]);
+import { FATAL_STATUSES } from './http-utils.js';
 
 export interface TryKeyResult {
   status: 'success' | 'rate_limited' | 'invalid_key' | 'fatal' | 'network_error';

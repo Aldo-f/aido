@@ -35,9 +35,11 @@ beforeEach(() => {
     const { startProxy } = await import('../src/proxy.js');
     
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
     
-    await startProxy();
+    await expect(startProxy()).rejects.toThrow('process.exit called');
     
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Error: Port 4141 is in use by another process')
@@ -56,9 +58,11 @@ beforeEach(() => {
     
     const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
     
-    await startProxy();
+    await expect(startProxy()).rejects.toThrow('process.exit called');
     
     expect(consoleLogSpy).toHaveBeenCalledWith(
       expect.stringContaining('Stale PID file found')
@@ -80,9 +84,11 @@ beforeEach(() => {
     const { startProxy } = await import('../src/proxy.js');
     
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
     
-    await startProxy();
+    await expect(startProxy()).rejects.toThrow('process.exit called');
     
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Error: Port 4141 is already in use by PID')

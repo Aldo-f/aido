@@ -6,12 +6,11 @@ import { toOllamaBody, fromOllamaResponse, toOllamaPath } from './ollama.js';
 import { PRIORITIES } from './priorities.js';
 import { tryKey } from './key-rotation.js';
 import { safeFetch } from './safe-fetch.js';
+import { FATAL_STATUSES, extractResponseHeaders, stripApiPrefix } from './http-utils.js';
 
 export const AUTO_PRIORITY = PRIORITIES.auto;
 
 export type PriorityType = 'auto' | 'cloud' | 'local';
-
-const FATAL_STATUSES = new Set([400, 401, 403, 404]);
 
 function getModelsToTry(provider: Provider, specificModel?: string, defaultModel?: string): string[] {
   const allModels = getAllModels(provider);
@@ -72,9 +71,7 @@ export async function forwardAuto(
     const isOllama = config.nativeFormat === true;
 
     let upstreamPath = isOllama ? toOllamaPath(openaiPath) : openaiPath;
-    if (upstreamPath.startsWith('/v1') || upstreamPath.startsWith('/api')) {
-      upstreamPath = upstreamPath.replace(/^\/v1/, '').replace(/^\/api/, '');
-    }
+    upstreamPath = stripApiPrefix(upstreamPath);
     const url = `${config.baseUrl}${upstreamPath}`;
 
     const modelsToTry = getModelsToTry(provider, specificModel, defaultModel);
@@ -138,8 +135,7 @@ export async function forwardAuto(
         if (result.status === 'success' && result.response) {
           const totalTime = Date.now() - overallStartTime;
           console.log(`[auto] ✓ ${provider}/${modelToTry} succeeded in ${totalTime}ms (tried: ${tried.join(', ') || 'none'})`);
-          const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
-          result.response.headers.forEach((v, k) => { if (k !== 'content-type') responseHeaders[k] = v; });
+          const responseHeaders = extractResponseHeaders(result.response);
           return { status: result.response.status, body: responseBody, headers: responseHeaders, usedProvider: provider, usedModel: modelToTry };
         }
       }
@@ -218,9 +214,7 @@ export async function forwardAutoFree(
       if (isOllama) upstreamBody = toOllamaBody(upstreamBody);
 
       let upstreamPath = isOllama ? toOllamaPath(openaiPath) : openaiPath;
-      if (upstreamPath.startsWith('/v1') || upstreamPath.startsWith('/api')) {
-        upstreamPath = upstreamPath.replace(/^\/v1/, '').replace(/^\/api/, '');
-      }
+      upstreamPath = stripApiPrefix(upstreamPath);
       const url = `${config.baseUrl}${upstreamPath}`;
       const startTime = Date.now();
 
@@ -273,8 +267,7 @@ export async function forwardAutoFree(
 
       const totalTime = Date.now() - overallStartTime;
       console.log(`[auto-free]   ✓ ${provider}/${model} succeeded in ${totalTime}ms (tried: ${providerTried} key-model pairs)`);
-      const responseHeaders: Record<string, string> = { 'content-type': 'application/json' };
-      res.headers.forEach((v, k) => { if (k !== 'content-type') responseHeaders[k] = v; });
+      const responseHeaders = extractResponseHeaders(res);
 
       return { status: res.status, body: responseBody, headers: responseHeaders, usedProvider: provider, usedModel: model };
     }
