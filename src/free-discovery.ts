@@ -4,6 +4,7 @@
 import { PROVIDER_CONFIGS, type Provider } from './detector.js';
 import { loadKeysForProvider } from './rotator.js';
 import { getFreeModels, invalidateCache, saveModels } from './db.js';
+import { safeFetch } from './safe-fetch.js';
 
 /**
  * Represents a discovered free model
@@ -79,18 +80,11 @@ export async function fetchModels(provider: Provider): Promise<RawModel[]> {
   const baseUrl = config.baseUrl;
   const modelsUrl = `${baseUrl}/models`;
 
-  // AbortController for timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
-
   try {
-    const response = await fetch(modelsUrl, {
+    const response = await safeFetch(modelsUrl, {
       method: 'GET',
       headers,
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(
@@ -101,7 +95,6 @@ export async function fetchModels(provider: Provider): Promise<RawModel[]> {
     const data = (await response.json()) as ProviderModels;
     return data.data ?? [];
   } catch (error) {
-    clearTimeout(timeoutId);
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error(`Timeout fetching models from ${provider} after 30 seconds`);
     }
