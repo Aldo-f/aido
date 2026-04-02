@@ -3,6 +3,8 @@ import { PROVIDER_CONFIGS, detectProvider, type Provider } from './detector.js';
 import { addKeyToEnv } from './env.js';
 import { markSourceSearched, isSourceSearchedRecently, cleanOldSearchedSources } from './db.js';
 import { scanRepoWithGitleaks, type FoundSecret } from './hunt-gitleaks.js';
+import { safeFetch } from './safe-fetch.js';
+import { ALL_PROVIDERS } from './http-utils.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -79,6 +81,31 @@ export function detectKeyProvider(key: string): Provider | null {
   return detectProvider(key);
 }
 
+interface FoundKeyContext {
+  found: string[];
+  seenKeys: Set<string>;
+  limit: number;
+  provider?: string;
+}
+
+async function processFoundKey(key: string, ctx: FoundKeyContext): Promise<void> {
+  if (ctx.seenKeys.has(key)) return;
+  ctx.seenKeys.add(key);
+
+  console.log(`[hunt] Found key candidate: ...${key.slice(-8)} - validating...`);
+  
+  const valid = await validateKey(key, ctx.provider);
+  if (valid) {
+    const detectedProvider = detectKeyProvider(key) || 'unknown';
+    console.log(`[hunt] ✓ Key VALID! (provider: ${detectedProvider})`);
+    ctx.found.push(key);
+    
+    const targetProvider = ctx.provider || 'opencode';
+    addKeyToEnv(targetProvider, key);
+    console.log(`[hunt] Added to ${targetProvider}`);
+  }
+}
+
 export async function huntKeys(opts: HuntOptions): Promise<{ found: number; added: string[] }> {
   const { limit, timeout, provider } = opts;
   const found: string[] = [];
@@ -135,23 +162,9 @@ export async function huntKeys(opts: HuntOptions): Promise<{ found: number; adde
         }
         
         for (const key of validMatches) {
-          if (seenKeys.has(key)) continue;
-          seenKeys.add(key);
-
-          console.log(`[hunt] Found key candidate: ...${key.slice(-8)} - validating...`);
+          await processFoundKey(key, { found, seenKeys, limit, provider });
           
-          const valid = await validateKey(key, provider);
-          if (valid) {
-            const detectedProvider = detectKeyProvider(key) || 'unknown';
-            console.log(`[hunt] ✓ Key VALID! (provider: ${detectedProvider})`);
-            found.push(key);
-            
-                const targetProvider = provider || 'opencode';
-            addKeyToEnv(targetProvider, key);
-            console.log(`[hunt] Added to ${targetProvider}`);
-            
-            if (found.length >= limit) break;
-          }
+          if (found.length >= limit) break;
         }
         
         markSourceSearched(page.url, query, validMatches.length);
@@ -229,7 +242,7 @@ export async function huntKeys(opts: HuntOptions): Promise<{ found: number; adde
                 console.log(`[hunt] ✓ Key VALID! (provider: ${detectedProvider})`);
                 found.push(key);
                 
-            const targetProvider = provider || 'opencode';
+                const targetProvider = provider || 'opencode';
                 addKeyToEnv(targetProvider, key);
                 console.log(`[hunt] Added to ${targetProvider}`);
               }
@@ -388,9 +401,13 @@ async function searchWithPlaywrightAlternative(query: string): Promise<SearchPag
   return pages;
 }
 
+function isValidProvider(value: string): value is Provider {
+  return (ALL_PROVIDERS as readonly string[]).includes(value);
+}
+
 export async function validateKey(key: string, providerFilter?: string): Promise<boolean> {
-  const providers: Provider[] = providerFilter 
-    ? [providerFilter as Provider] 
+  const providers: Provider[] = providerFilter && isValidProvider(providerFilter)
+    ? [providerFilter]
     : ['opencode', 'openai', 'anthropic', 'groq', 'google'];
 
   for (const provider of providers) {
@@ -398,9 +415,8 @@ export async function validateKey(key: string, providerFilter?: string): Promise
     if (!config) continue;
 
     try {
-      const res = await fetch(`${config.baseUrl}/v1/models`, {
+      const res = await safeFetch(`${config.baseUrl}/v1/models`, {
         headers: config.authHeader(key),
-        signal: AbortSignal.timeout(5000),
       });
       if (res.ok) return true;
     } catch {

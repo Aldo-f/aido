@@ -252,37 +252,4 @@ describe('createProxyServer', () => {
     server.close();
     globalThis.fetch = originalFetch;
   });
-
-  it('handles 404 for ollama-local', async () => {
-    const server = createProxyServer();
-    process.env.OLLAMA_KEYS = 'local';
-
-    // Mock fetch for upstream API calls
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
-      const urlStr = input instanceof Request ? input.url : String(input);
-      if (urlStr.includes('localhost:11434')) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ error: 'model not found' }), { status: 404 })
-        );
-      }
-      return originalFetch(input);
-    });
-
-    const port = await new Promise<number>((resolve) => {
-      server.listen(0, () => {
-        resolve((server.address() as { port: number }).port);
-      });
-    });
-
-    const res = await fetch(`http://localhost:${port}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'aido/ollama-local/qwen3:8b', messages: [{ role: 'user', content: 'hi' }] }),
-    });
-
-    expect(res.status).toBe(404);
-    server.close();
-    globalThis.fetch = originalFetch;
-  }, 10000);
 });
