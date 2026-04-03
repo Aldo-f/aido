@@ -296,4 +296,149 @@ describe('safeFetch', () => {
     expect(elapsed).toBeGreaterThanOrEqual(250);
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
+
+  // ─── Rate limiting (429) retry tests ─────────────────────────────────────
+
+  it('retries on 429 rate limited response', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries on 429 with Retry-After header', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response('Rate limited', {
+          status: 429,
+          headers: { 'Retry-After': '1' }
+        })
+      )
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const start = Date.now();
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+    const elapsed = Date.now() - start;
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // Should have waited ~1 second (from Retry-After header)
+    expect(elapsed).toBeGreaterThanOrEqual(900);
+  });
+
+  it('returns 429 after max retries exhausted', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Rate limited', { status: 429 }));
+
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(res.status).toBe(429);
+    // Initial + 3 retries = 4 total attempts
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('retries on 429 then succeeds on second attempt', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: 'success' }), { status: 200 }));
+
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const json = await res.json() as { data: string };
+    expect(json.data).toBe('success');
+  });
+
+  it('retries on 429 multiple times before succeeding', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const start = Date.now();
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+    const elapsed = Date.now() - start;
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    // Should have waited for 2 backoff periods
+    expect(elapsed).toBeGreaterThanOrEqual(200);
+  });
+
+  it('does not retry on 500 server error', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Server error', { status: 500 }));
+
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(res.status).toBe(500);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry on 503 service unavailable', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Service unavailable', { status: 503 }));
+
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+
+    expect(res.status).toBe(503);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries on 429 for POST requests with body', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const body = JSON.stringify({ model: 'test', messages: [] });
+    const res = await safeFetch('https://example.com/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // Verify body is preserved on retry
+    const callArgs = mockFetch.mock.calls[0];
+    expect((callArgs[1] as RequestInit).body).toBe(body);
+  });
+
+  it('retries on 429 for Request objects', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const req = new Request('https://example.com/api', {
+      method: 'POST',
+      body: JSON.stringify({ test: true }),
+    });
+
+    const res = await safeFetch(req);
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses exponential backoff with jitter for 429 retries', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValueOnce(new Response('Rate limited', { status: 429 }))
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const start = Date.now();
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+    const elapsed = Date.now() - start;
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+    // Should have waited for 3 backoff periods (100ms, 200ms, 400ms + jitter)
+    expect(elapsed).toBeGreaterThanOrEqual(500);
+  });
 });

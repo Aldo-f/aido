@@ -1,5 +1,6 @@
 /**
- * Safe fetch wrapper that handles Cloudflare IPv6 fallback issues.
+ * Safe fetch wrapper that handles Cloudflare IPv6 fallback issues
+ * and rate limiting (429) with exponential backoff.
  * 
  * Node.js 24's built-in fetch has issues with Cloudflare endpoints
  * (like opencode.ai). When IPv6 fails, it should fall back to IPv4,
@@ -12,6 +13,7 @@
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 100;
+const MAX_DELAY_MS = 5000;
 
 export async function safeFetch(
   input: RequestInfo | URL,
@@ -37,7 +39,25 @@ async function fetchWithRetry(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await globalThis.fetch(input, init);
+      const response = await globalThis.fetch(input, init);
+
+      // Retry on 429 (rate limited) with exponential backoff
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('retry-after');
+        const delay = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : calculateBackoff(attempt);
+
+        if (attempt < MAX_RETRIES) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        // Max retries reached, return the 429 response
+        return response;
+      }
+
+      return response;
     } catch (err) {
       lastError = err as Error;
       const cause = (err as Error).cause as { code?: string } | undefined;
@@ -50,10 +70,17 @@ async function fetchWithRetry(
         throw err;
       }
 
-      const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+      const delay = calculateBackoff(attempt);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 
   throw lastError;
+}
+
+function calculateBackoff(attempt: number): number {
+  // Exponential backoff with jitter
+  const base = Math.min(BASE_DELAY_MS * Math.pow(2, attempt), MAX_DELAY_MS);
+  const jitter = Math.random() * base * 0.5;
+  return base + jitter;
 }

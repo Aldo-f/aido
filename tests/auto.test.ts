@@ -106,8 +106,9 @@ describe('forwardAuto', () => {
 
     const result = await forwardAuto('/v1/chat/completions', 'POST', DUMMY_BODY);
     expect(result.usedProvider).toBe('groq');
-    // opencode (429) + ollama-local (network fail) + groq (success)
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    // safeFetch retries 429 (4 attempts), then ollama-local fails (1), then groq succeeds (1)
+    // = 4 + 1 + 1 = 6 total fetch calls
+    expect(fetchSpy).toHaveBeenCalledTimes(6);
   });
 
   it('returns 503 when all providers exhausted', async () => {
@@ -253,9 +254,9 @@ describe('forwardAuto', () => {
 
     const result = await forwardAuto('/v1/chat/completions', 'POST', DUMMY_BODY);
     expect(result.usedProvider).toBe('groq');
-    // Both opencode keys should be tried (429) before moving to groq
-    // Note: ollama-local is also tried (with 'local' key) before groq
-    expect(fetchSpy).toHaveBeenCalledTimes(4); // 2 opencode keys + 1 ollama-local + 1 groq
+    // Both opencode keys should be tried (429 × 4 retries each = 8), then ollama-local fails (1), then groq succeeds (1)
+    // = 8 + 1 + 1 = 10 total fetch calls
+    expect(fetchSpy).toHaveBeenCalledTimes(10);
   });
 
   it('handles invalid keys (401) by trying next key', async () => {
@@ -339,8 +340,9 @@ describe('forwardAuto', () => {
     // Both models should be tried, plus ollama-local fails, then other providers fail
     // The exact count depends on how many providers are tried
     expect(result.status).toBe(503);
-    // At least the 2 opencode models were tried
-    expect(fetchSpy).toHaveBeenCalledTimes(4); // 2 opencode models + 1 ollama-local + 1 more
+    // safeFetch retries 429 (4 attempts per model), so 2 models × 4 = 8 opencode calls
+    // + ollama-local (1 network error) + groq (1 network error) = 10 total
+    expect(fetchSpy).toHaveBeenCalledTimes(10);
   });
 
   it('handles ollama provider', async () => {
