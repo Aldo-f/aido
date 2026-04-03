@@ -151,6 +151,27 @@ describe('getPriorityForCategory', () => {
      const priority = getPriorityForCategory('provider');
      expect(priority[0].provider).toBe('opencode');
    });
+
+   it('routes aido/opencode (no model) to auto-select model', () => {
+     const result = routeAidoModel('aido/opencode');
+     expect(result.provider).toBe('opencode');
+     expect(result.model).toBe('auto');
+     expect(result.isAuto).toBe(true);
+   });
+
+   it('routes aido/groq (no model) to auto-select model', () => {
+     const result = routeAidoModel('aido/groq');
+     expect(result.provider).toBe('groq');
+     expect(result.model).toBe('auto');
+     expect(result.isAuto).toBe(true);
+   });
+
+   it('routes aido/openai (no model) to auto-select model', () => {
+     const result = routeAidoModel('aido/openai');
+     expect(result.provider).toBe('openai');
+     expect(result.model).toBe('auto');
+     expect(result.isAuto).toBe(true);
+   });
 });
 
 describe('cloud model detection', () => {

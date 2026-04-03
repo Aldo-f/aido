@@ -10,6 +10,9 @@ while [ -L "$SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
 
+export DOTENV_CONFIG_PATH="$SCRIPT_DIR/.env"
+export DB_PATH="$SCRIPT_DIR/aido.db"
+
 exec node \
   --dns-result-order=ipv4first \
   --experimental-sqlite \

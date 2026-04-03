@@ -79,6 +79,38 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
     if (route.provider !== 'auto') {
       const specificProvider = route.provider as Provider;
 
+      // If route is auto (no model specified), try all free models for this provider
+      if (route.isAuto) {
+        const allModels = getAllModels(specificProvider);
+        const freeModels = allModels.filter(m => m.isFree);
+        const modelsToTry = freeModels.length > 0
+          ? freeModels.map(m => m.id)
+          : [DEFAULT_MODELS[specificProvider]];
+
+        const config = PROVIDER_CONFIGS[specificProvider];
+        const url = `${config.baseUrl}/chat/completions`;
+
+        for (const selectedModel of modelsToTry) {
+          const baseHeaders = { 'content-type': 'application/json' };
+          const body = JSON.stringify({ model: selectedModel, stream, messages: [{ role: 'user', content: prompt }] });
+
+          try {
+            const { res } = await tryWithKeyRotation(specificProvider, selectedModel, url, 'POST', baseHeaders, body);
+            if (stream) {
+              await handleStream(res, specificProvider, selectedModel);
+            } else {
+              await handleNonStream(res, specificProvider, selectedModel);
+            }
+            return;
+          } catch (err) {
+            console.log(`[run] ${err instanceof Error ? err.message : err}`);
+          }
+        }
+
+        console.error(`[run] All free models for ${specificProvider} failed or are rate limited`);
+        process.exit(1);
+      }
+
       try {
         const { res } = await makeRequest(specificProvider, route.model, prompt, stream);
         if (stream) {
@@ -88,6 +120,33 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
         }
         return;
       } catch (err) {
+        // If specific model fails, try other free models from same provider
+        const allModels = getAllModels(specificProvider);
+        const freeModels = allModels.filter(m => m.isFree && m.id !== route.model);
+        
+        if (freeModels.length > 0) {
+          console.log(`[run] ${route.model} failed, trying other free models...`);
+          const config = PROVIDER_CONFIGS[specificProvider];
+          const url = `${config.baseUrl}/chat/completions`;
+
+          for (const selectedModel of freeModels.map(m => m.id)) {
+            const baseHeaders = { 'content-type': 'application/json' };
+            const body = JSON.stringify({ model: selectedModel, stream, messages: [{ role: 'user', content: prompt }] });
+
+            try {
+              const { res } = await tryWithKeyRotation(specificProvider, selectedModel, url, 'POST', baseHeaders, body);
+              if (stream) {
+                await handleStream(res, specificProvider, selectedModel);
+              } else {
+                await handleNonStream(res, specificProvider, selectedModel);
+              }
+              return;
+            } catch (err2) {
+              console.log(`[run] ${err2 instanceof Error ? err2.message : err2}`);
+            }
+          }
+        }
+
         console.error(`[run] ${err}`);
         process.exit(1);
       }

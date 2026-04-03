@@ -122,7 +122,16 @@ export function routeAidoModel(pathname: string): RouteResult {
     };
   }
   
-  if (parsed.category === 'provider' && parsed.provider && parsed.model) {
+  if (parsed.category === 'provider' && parsed.provider) {
+    // If no model specified, return with isAuto=true so run.ts picks a free model
+    if (!parsed.model) {
+      return {
+        provider: parsed.provider,
+        model: 'auto',
+        upstreamPath: '/v1/chat/completions',
+        isAuto: true,
+      };
+    }
     const model = addCloudSuffix(parsed.model);
     return {
       provider: parsed.provider,

@@ -61,7 +61,7 @@ export function parseAidoModel(path: string): ParsedAidoModel {
     const provider = categoryOrProvider as Provider;
     
     if (parts.length === 1) {
-      throw new Error(`Missing model name for provider '${provider}'. Use: aido/${provider}/<model>`);
+      return { category: 'provider', provider, model: null };
     }
     
     const model = parts.slice(1).join('/');

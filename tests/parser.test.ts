@@ -119,8 +119,11 @@ describe('parseAidoModel', () => {
       expect(result.model).toBe('big-pickle');
     });
 
-    it('throws for aido/opencode (missing model)', () => {
-      expect(() => parseAidoModel('aido/opencode')).toThrow("Missing model name");
+    it('accepts aido/opencode (no model) for auto-select', () => {
+      const result = parseAidoModel('aido/opencode');
+      expect(result.category).toBe('provider');
+      expect(result.provider).toBe('opencode');
+      expect(result.model).toBeNull();
     });
 
     it('throws for non-aido path', () => {
