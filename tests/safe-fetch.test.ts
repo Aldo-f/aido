@@ -310,7 +310,7 @@ describe('safeFetch', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('retries on 429 with Retry-After header', async () => {
+  it('retries on 429 with short Retry-After header', async () => {
     const mockFetch = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
         new Response('Rate limited', {
@@ -328,6 +328,24 @@ describe('safeFetch', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
     // Should have waited ~1 second (from Retry-After header)
     expect(elapsed).toBeGreaterThanOrEqual(900);
+  });
+
+  it('returns 429 immediately when Retry-After is too long', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response('Rate limited', {
+          status: 429,
+          headers: { 'Retry-After': '60' }
+        })
+      );
+
+    const start = Date.now();
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+    const elapsed = Date.now() - start;
+
+    expect(res.status).toBe(429);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(elapsed).toBeLessThan(500);
   });
 
   it('returns 429 after max retries exhausted', async () => {
@@ -440,5 +458,23 @@ describe('safeFetch', () => {
     expect(mockFetch).toHaveBeenCalledTimes(4);
     // Should have waited for 3 backoff periods (100ms, 200ms, 400ms + jitter)
     expect(elapsed).toBeGreaterThanOrEqual(500);
+  });
+
+  it('does not retry on 429 when Retry-After exceeds threshold', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response('Rate limited', {
+          status: 429,
+          headers: { 'Retry-After': '30' }
+        })
+      );
+
+    const start = Date.now();
+    const res = await safeFetch('https://example.com/api', { method: 'GET' });
+    const elapsed = Date.now() - start;
+
+    expect(res.status).toBe(429);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(elapsed).toBeLessThan(500);
   });
 });

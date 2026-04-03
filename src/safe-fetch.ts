@@ -1,11 +1,14 @@
 /**
  * Safe fetch wrapper that handles Cloudflare IPv6 fallback issues
- * and rate limiting (429) with exponential backoff.
+ * and transient rate limiting (429) with exponential backoff.
  * 
  * Node.js 24's built-in fetch has issues with Cloudflare endpoints
  * (like opencode.ai). When IPv6 fails, it should fall back to IPv4,
  * but the default timeout is too short. This wrapper retries failed
  * requests with exponential backoff to work around this.
+ * 
+ * For 429 responses: only retries if Retry-After header is short (< 5s),
+ * otherwise returns the 429 immediately so key rotation can handle it.
  * 
  * This mirrors what OpenCode SDK does:
  * @see https://github.com/opencode-ai/sdk/blob/main/src/client.js
@@ -14,6 +17,7 @@
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 100;
 const MAX_DELAY_MS = 5000;
+const MAX_RETRY_AFTER_MS = 5000; // Only retry 429 if Retry-After < 5s
 
 export async function safeFetch(
   input: RequestInfo | URL,
@@ -41,12 +45,17 @@ async function fetchWithRetry(
     try {
       const response = await globalThis.fetch(input, init);
 
-      // Retry on 429 (rate limited) with exponential backoff
+      // Retry on 429 (rate limited) only if Retry-After is short
       if (response.status === 429) {
         const retryAfter = response.headers.get('retry-after');
         const delay = retryAfter
           ? parseInt(retryAfter, 10) * 1000
           : calculateBackoff(attempt);
+
+        // If rate limit is long, don't retry - let key rotation handle it
+        if (delay > MAX_RETRY_AFTER_MS) {
+          return response;
+        }
 
         if (attempt < MAX_RETRIES) {
           await new Promise(resolve => setTimeout(resolve, delay));
