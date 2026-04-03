@@ -8,7 +8,7 @@ import { startProxy } from './proxy.js';
 import { launch } from './launch.js';
 import { getRateLimitedKeys, clearExpiredLimits, clearAllLimits, clearAllModelLimits } from './db.js';
 import { showModels } from './models.js';
-import { loadKeysForProvider } from './rotator.js';
+import { loadKeysForProvider, resetRotators } from './rotator.js';
 import { readPid, deletePid, isStale } from './daemon.js';
 import { huntKeys, validateKey, startHuntDaemon, isHuntRunning, readHuntPid, deleteHuntPid } from './hunt.js';
 import { forwardAutoFree } from './auto.js';
@@ -157,6 +157,7 @@ program
   .action(() => {
     const cleared = clearAllLimits();
     const modelCleared = clearAllModelLimits();
+    resetRotators();
     console.log(`[clear] Cleared ${cleared} key limit${cleared !== 1 ? 's' : ''} and ${modelCleared} model limit${modelCleared !== 1 ? 's' : ''}.`);
   });
 

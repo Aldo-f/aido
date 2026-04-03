@@ -209,6 +209,7 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
     } else if (strategy === 'paid') {
       modelsToTry = paidModels.map(m => m.id);
     } else {
+      // Try free models first, then paid models
       modelsToTry = [...freeModels.map(m => m.id), ...paidModels.map(m => m.id)];
     }
 
@@ -236,7 +237,17 @@ export async function run(prompt: string, opts: RunOptions): Promise<void> {
       }
       return;
     } catch (err) {
-      console.log(`[run] ${err instanceof Error ? err.message : err}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      // If model is rate limited, try next model
+      // If keys are all invalid (401), stop trying - keys are bad
+      if (msg.includes('rate limited')) {
+        continue;
+      }
+      if (msg.includes('invalid') || msg.includes('No API keys')) {
+        console.error(`[run] ${msg}`);
+        process.exit(1);
+      }
+      console.log(`[run] ${msg}`);
     }
   }
 
