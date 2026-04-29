@@ -1,0 +1,37 @@
+run-tests
+  1c19a2a13dacdb28 2,4
+  b27b9ca0bbaea93d 1,3,5-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "fc5813c2cbf117d2879fcbd0b60bfb2c38c4f2e0",
+  "prompts": {
+    "1c19a2a13dacdb28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2451a5dcdffeFZPqibU5tarkMY-2a4eae18-0b4c-436e-b1be-113b1901d65e",
+        "model": "unknown"
+      },
+      "human_author": "Aldo",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 4,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "b27b9ca0bbaea93d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "opencode-transcript-ses_2451a5dcdffeFZPqibU5tarkMY-6706cc00-c628-4d96-8c67-e53e3453e0b8",
+        "model": "unknown"
+      },
+      "human_author": "Aldo",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 0,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}
