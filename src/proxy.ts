@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import http from 'http';
 import { PROVIDER_CONFIGS, applyModelPrefix, type Provider } from './detector.js';
 import { getRotator } from './rotator.js';
@@ -42,6 +43,28 @@ function enrichModelsWithCapabilities(responseBody: string): string {
         enrichedModels.push(createEnrichedModel(m as Record<string, unknown>, { id: `aido/zen/${(m as Record<string, unknown>).id}` }));
       }
       json.data = enrichedModels;
+      return JSON.stringify(json);
+    }
+    return responseBody;
+  } catch {
+    return responseBody;
+  }
+}
+
+function transformResponseContent(responseBody: string): string {
+  try {
+    const json = JSON.parse(responseBody);
+    if (json.choices && Array.isArray(json.choices)) {
+      for (const choice of json.choices) {
+        if (choice.message) {
+          if (choice.message.reasoning && !choice.message.content) {
+            choice.message.content = choice.message.reasoning;
+          }
+          if (choice.message.reasoning_details && Array.isArray(choice.message.reasoning_details)) {
+            delete choice.message.reasoning_details;
+          }
+        }
+      }
       return JSON.stringify(json);
     }
     return responseBody;
@@ -155,7 +178,7 @@ async function forwardRequest(
         const retryAfter = res.headers.get('retry-after');
         const cooldown = retryAfter ? parseInt(retryAfter, 10) : 3600;
         rotator.markLimited(key, cooldown);
-        console.log(`[proxy] 429 on ${provider} key ...${key.slice(-8)} → rotating to next key`);
+        console.log(`[proxy] 429 on ${provider} key ...${key.slice(-8)} → rate limited, rotating`);
 
         key = rotator.next();
         if (!key) {
@@ -169,18 +192,60 @@ async function forwardRequest(
         continue;
       }
 
+      if (res.status === 401 || res.status === 403) {
+        rotator.markInvalidKey(key);
+        console.log(`[proxy] ${res.status} on ${provider} key ...${key.slice(-8)} → invalid key, rotating`);
+
+        key = rotator.next();
+        if (!key) {
+          return {
+            status: 401,
+            body: JSON.stringify({ error: 'Invalid API key. Please check your credentials.' }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        forwardHeaders['Authorization'] = config.authHeader(key).Authorization ?? forwardHeaders['Authorization'];
+        continue;
+      }
+
+      if (res.status === 402) {
+        rotator.markQuotaExceeded(key);
+        console.log(`[proxy] 402 on ${provider} key ...${key.slice(-8)} → quota exceeded, rotating`);
+
+        key = rotator.next();
+        if (!key) {
+          return {
+            status: 402,
+            body: JSON.stringify({ error: 'Quota exceeded. Please check your payment method.' }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        forwardHeaders['Authorization'] = config.authHeader(key).Authorization ?? forwardHeaders['Authorization'];
+        continue;
+      }
+
       const responseHeaders = extractResponseHeaders(res);
-      const enrichedBody = path.includes('/v1/models')
-        ? enrichModelsWithCapabilities(responseBody)
-        : responseBody;
+      let enrichedBody = responseBody;
+      if (path.includes('/v1/models')) {
+        enrichedBody = enrichModelsWithCapabilities(responseBody);
+      } else if (path.includes('/chat/completions')) {
+        enrichedBody = transformResponseContent(responseBody);
+      }
 
       return { status: res.status, body: enrichedBody, headers: responseHeaders };
     } catch (err) {
-      return {
-        status: 502,
-        body: JSON.stringify({ error: `Upstream error: ${(err as Error).message}` }),
-        headers: { 'content-type': 'application/json' },
-      };
+      console.log(`[proxy] network error on ${provider} key ...${key.slice(-8)} → ${(err as Error).message}, rotating`);
+
+      key = rotator.next();
+      if (!key) {
+        return {
+          status: 502,
+          body: JSON.stringify({ error: `Upstream error: ${(err as Error).message}` }),
+          headers: { 'content-type': 'application/json' },
+        };
+      }
+      forwardHeaders['Authorization'] = config.authHeader(key).Authorization ?? forwardHeaders['Authorization'];
+      continue;
     }
   }
 }

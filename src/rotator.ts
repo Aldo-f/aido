@@ -56,6 +56,16 @@ export class KeyRotator {
     markRateLimited(key, this.provider, cooldownSeconds);
   }
 
+  markInvalidKey(key: string): void {
+    const THIRTY_DAYS = 30 * 24 * 60 * 60;
+    markRateLimited(key, this.provider, THIRTY_DAYS);
+  }
+
+  markQuotaExceeded(key: string): void {
+    const NINETY_DAYS = 90 * 24 * 60 * 60;
+    markRateLimited(key, this.provider, NINETY_DAYS);
+  }
+
   allKeys(): string[] {
     return [...this.keys];
   }

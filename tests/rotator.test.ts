@@ -73,4 +73,18 @@ describe('KeyRotator', () => {
 
     expect(rotator.next()).toBe('sk-a');
   });
+
+  it('markInvalidKey marks key with 30-day cooldown', () => {
+    const rotator = new KeyRotator('opencode', ['sk-a', 'sk-b']);
+    rotator.markInvalidKey('sk-a');
+
+    expect(rotator.next()).toBe('sk-b');
+  });
+
+  it('markQuotaExceeded marks key with 90-day cooldown', () => {
+    const rotator = new KeyRotator('opencode', ['sk-a', 'sk-b']);
+    rotator.markQuotaExceeded('sk-a');
+
+    expect(rotator.next()).toBe('sk-b');
+  });
 });
