@@ -1,0 +1,26 @@
+tests/db-models.test.ts
+  a24bbf8446637322 49-50,54,81-82,86,88,116-117,119,128,146,165,185
+src/db.ts
+  aab0e77a2f60743d 53-72,168-171,174-175
+  a24bbf8446637322 240,264,281,291,298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "138c7897509ea0f6ad27eb8931c3eb0492a9abf8",
+  "prompts": {
+    "a24bbf8446637322": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2feb2d508ffeoVU3C44GuFc2C9",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 18,
+      "accepted_lines": 20,
+      "overriden_lines": 0
+    }
+  }
+}

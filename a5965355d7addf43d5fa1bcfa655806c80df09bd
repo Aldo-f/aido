@@ -1,0 +1,23 @@
+AGENTS.md
+  9580015eaeff2409 1-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "a5965355d7addf43d5fa1bcfa655806c80df09bd",
+  "prompts": {
+    "9580015eaeff2409": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_318a31923ffePTkzrLmJi9jbt7",
+        "model": "opencode/big-pickle"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 82,
+      "total_deletions": 0,
+      "accepted_lines": 82,
+      "overriden_lines": 0
+    }
+  }
+}

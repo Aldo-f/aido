@@ -1,0 +1,39 @@
+src/key-rotation.ts
+  15c5d2efba88c8cd 1-107
+src/auto.ts
+  15c5d2efba88c8cd 7,41,43,50,61,84,86-89,91-112,114-116,120,122,124-127,129,174,181,240-243
+src/models.ts
+  15c5d2efba88c8cd 4,9,72-85,89-107,109,175-179,187,193,197,200,203-205,215-216,218,220-222,224
+src/models/parser.ts
+  15c5d2efba88c8cd 92-94,96-100
+src/cli.ts
+  15c5d2efba88c8cd 9,154-191
+src/db.ts
+  15c5d2efba88c8cd 39,45,165-170,282,299
+src/run.ts
+  15c5d2efba88c8cd 6-7,27,31,33-43,46-49,54-70,77,80-84,86,88-91,94,119,121,123,125-135,139,146,154,161-164,166-168,171,173,175,177-179,183
+src/free-discovery.ts
+  15c5d2efba88c8cd 4-6
+src/proxy.ts
+  15c5d2efba88c8cd 111-129,138,144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "72e78cffa827c49aa0b63ec05c5ca27e6e52359d",
+  "prompts": {
+    "15c5d2efba88c8cd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f4d670e0ffeK6nNtsUMcWeAJf",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 764,
+      "total_deletions": 665,
+      "accepted_lines": 408,
+      "overriden_lines": 0
+    }
+  }
+}

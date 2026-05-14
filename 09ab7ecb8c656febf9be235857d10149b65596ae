@@ -1,0 +1,40 @@
+src/models.ts
+  aab0e77a2f60743d 194-207,210-221
+src/cli.ts
+  aab0e77a2f60743d 16-25
+tests/proxy-start.test.ts
+  aab0e77a2f60743d 16,20-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "09ab7ecb8c656febf9be235857d10149b65596ae",
+  "prompts": {
+    "a24bbf8446637322": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2feb2d508ffeoVU3C44GuFc2C9",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "aab0e77a2f60743d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
+        "model": "opencode/mimo-v2-flash-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 244,
+      "total_deletions": 212,
+      "accepted_lines": 43,
+      "overriden_lines": 0
+    }
+  }
+}

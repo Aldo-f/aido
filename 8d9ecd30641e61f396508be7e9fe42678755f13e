@@ -1,0 +1,33 @@
+AGENTS.md
+  15c5d2efba88c8cd 1,3-4,9-11,85-86,91,94-96
+docs/api.md
+  15c5d2efba88c8cd 5,10-11,16-19,22,27-30,35-37,40,45-46,49,54-56,59,64,77,82,90,92-111,116,119,124-128,131,136,139,144-146
+PROJECT.md
+  15c5d2efba88c8cd 3-5,15,31,33,36,122,124,270,309,374-377,465-469,472-473,476-478,481-483,486-487,512-514,520,523,618,642,654,663,672,681
+tests/install.test.ts
+  15c5d2efba88c8cd 1-124
+README.md
+  15c5d2efba88c8cd 1,6,29,65-66,76,79,82,85,94,114,119-122,125,134,139-142,145,150-152,175,180,215,220-222,251,256,266,271,274,279,282,287-291,319-320,336,341-342,345,350,444-456
+package.json
+  15c5d2efba88c8cd 2,7-8,11-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "8d9ecd30641e61f396508be7e9fe42678755f13e",
+  "prompts": {
+    "15c5d2efba88c8cd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f4d670e0ffeK6nNtsUMcWeAJf",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 308,
+      "total_deletions": 140,
+      "accepted_lines": 307,
+      "overriden_lines": 0
+    }
+  }
+}

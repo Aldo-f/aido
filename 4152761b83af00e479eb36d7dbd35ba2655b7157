@@ -1,0 +1,23 @@
+package.json
+  15c5d2efba88c8cd 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "4152761b83af00e479eb36d7dbd35ba2655b7157",
+  "prompts": {
+    "15c5d2efba88c8cd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f4d670e0ffeK6nNtsUMcWeAJf",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 18,
+      "overriden_lines": 0
+    }
+  }
+}

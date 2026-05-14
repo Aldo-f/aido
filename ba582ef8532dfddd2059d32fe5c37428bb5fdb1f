@@ -1,0 +1,23 @@
+PROJECT.md
+  aab0e77a2f60743d 1-728
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "ba582ef8532dfddd2059d32fe5c37428bb5fdb1f",
+  "prompts": {
+    "aab0e77a2f60743d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
+        "model": "opencode/mimo-v2-flash-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 728,
+      "total_deletions": 0,
+      "accepted_lines": 728,
+      "overriden_lines": 0
+    }
+  }
+}

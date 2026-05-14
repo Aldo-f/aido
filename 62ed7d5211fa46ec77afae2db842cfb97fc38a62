@@ -1,0 +1,27 @@
+src/auto.ts
+  15c5d2efba88c8cd 3,15-35,60,79-82,86-88,99-101,106,111,117,123-129,133-137,141-142,145
+tests/router.test.ts
+  15c5d2efba88c8cd 23,25-26,28,31,33,36,39,41,44,165,169,171
+src/models/router.ts
+  15c5d2efba88c8cd 90,98-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "62ed7d5211fa46ec77afae2db842cfb97fc38a62",
+  "prompts": {
+    "15c5d2efba88c8cd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f4d670e0ffeK6nNtsUMcWeAJf",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 105,
+      "total_deletions": 84,
+      "accepted_lines": 67,
+      "overriden_lines": 0
+    }
+  }
+}

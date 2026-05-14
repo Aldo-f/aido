@@ -1,0 +1,127 @@
+src/run.ts
+  aab0e77a2f60743d 3,21,75-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "13cbb696b8f171d38f8e914dcda1b085dfe53a0a",
+  "prompts": {
+    "2e4786f9d59b7bf3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f9d945e3ffe3bY0VS0KBqH1zw",
+        "model": "opencode/big-pickle"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "8bd4ba63a762fc6a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_30240c324ffedSinxwcncVytVb",
+        "model": "opencode/nemotron-3-super-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 24,
+      "overriden_lines": 0
+    },
+    "9580015eaeff2409": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_318a31923ffePTkzrLmJi9jbt7",
+        "model": "opencode/big-pickle"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 36,
+      "overriden_lines": 0
+    },
+    "9a29a082724cbec7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f92cdc17ffe6ZW5rHoBA1sh3W",
+        "model": "ollama-cloud/nemotron-3-super"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 129,
+      "overriden_lines": 0
+    },
+    "a24bbf8446637322": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2feb2d508ffeoVU3C44GuFc2C9",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 39,
+      "overriden_lines": 0
+    },
+    "aab0e77a2f60743d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
+        "model": "opencode/mimo-v2-flash-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 5,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    },
+    "c103517a2d14da5f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f9d96f11ffeI8q9I0piKr9wRJ",
+        "model": "opencode/big-pickle"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 56,
+      "overriden_lines": 0
+    },
+    "d581d1046a439529": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_307944dfeffe98vBIBzObr0nVD",
+        "model": "aido/aido/cloud"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2112,
+      "overriden_lines": 0
+    },
+    "d6f7d48ebe9aa1c4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f90a64dbffehNYRCWbVUA54ua",
+        "model": "opencode/nemotron-3-super-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 20,
+      "overriden_lines": 0
+    }
+  }
+}

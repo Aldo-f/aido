@@ -1,0 +1,23 @@
+src/run.ts
+  aab0e77a2f60743d 31-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "980703e8f5b78c1ffecd1e964c206d3176563422",
+  "prompts": {
+    "aab0e77a2f60743d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
+        "model": "opencode/mimo-v2-flash-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 77,
+      "total_deletions": 4,
+      "accepted_lines": 73,
+      "overriden_lines": 0
+    }
+  }
+}

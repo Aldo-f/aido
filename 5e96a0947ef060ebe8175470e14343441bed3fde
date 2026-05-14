@@ -1,0 +1,23 @@
+tests/run-specific-provider.test.ts
+  aab0e77a2f60743d 1-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "5e96a0947ef060ebe8175470e14343441bed3fde",
+  "prompts": {
+    "aab0e77a2f60743d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2f7f66ab0ffeS28QSQPxNQ7oSa",
+        "model": "opencode/mimo-v2-flash-free"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 74,
+      "total_deletions": 15,
+      "accepted_lines": 59,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,27 @@
+src/launch.ts
+  9580015eaeff2409 107,110-112,141,144-145
+tests/big-pickle-capabilities.test.ts
+  9580015eaeff2409 1-53
+src/proxy.ts
+  9580015eaeff2409 22-24,26-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "972174c0a819400b39f9bf9fbdaab40ba47feb13",
+  "prompts": {
+    "9580015eaeff2409": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_318a31923ffePTkzrLmJi9jbt7",
+        "model": "opencode/big-pickle"
+      },
+      "human_author": "Aldo <aldo.fieuw@gmail.com>",
+      "messages": [],
+      "total_additions": 80,
+      "total_deletions": 17,
+      "accepted_lines": 71,
+      "overriden_lines": 0
+    }
+  }
+}
